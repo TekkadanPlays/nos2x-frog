@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   addOpenPromptChangeListener,
   readOpenPrompts,
@@ -31,25 +30,27 @@ const managerFunctions = {
   }
 };
 
-export function useOpenPrompts() {
-  const [openPrompts, setOpenPrompts] = useState<OpenPromptItem[]>([]);
+/**
+ * Subscribe to open prompts changes. Returns an unsubscribe function.
+ * Used by Inferno class components instead of the old React hook.
+ */
+export function subscribeOpenPrompts(
+  callback: (prompts: OpenPromptItem[]) => void
+): () => void {
+  // Initialize with existing prompts
+  managerFunctions.get().then((existing: OpenPromptItem[]) => {
+    callback(existing);
+  });
 
-  useEffect(() => {
-    // initialize with existing open prompts
-    managerFunctions.get().then((existingOpenPrompts: OpenPromptItem[]) => {
-      setOpenPrompts(existingOpenPrompts);
-    });
+  // Listen for changes
+  const listener = (newOpenPrompts: OpenPromptItem[]) => {
+    callback(newOpenPrompts);
+  };
+  managerFunctions.addChangeListener(listener);
 
-    const listener = (newOpenPrompts: OpenPromptItem[]) => {
-      setOpenPrompts(newOpenPrompts);
-    };
-    managerFunctions.addChangeListener(listener);
-    return () => {
-      managerFunctions.removeChangeListener(listener);
-    };
-  }, []);
-
-  return openPrompts;
+  return () => {
+    managerFunctions.removeChangeListener(listener);
+  };
 }
 
 export default managerFunctions;

@@ -1,6 +1,6 @@
 import browser from 'webextension-polyfill';
 
-const EXTENSION_CODE = 'nos2x-fox';
+const EXTENSION_CODE = 'ribbit-signer';
 
 // inject the script that will provide window.nostr
 let script = document.createElement('script');

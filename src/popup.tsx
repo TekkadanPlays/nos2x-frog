@@ -1,163 +1,365 @@
+import { createElement } from 'inferno-create-element';
+import { Component, render } from 'inferno';
 import browser from 'webextension-polyfill';
-import { createRoot } from 'react-dom/client';
-import { getPublicKey, nip19 } from 'nostr-tools';
-import React, { useState, useEffect } from 'react';
+import { nip19 } from 'nostr-tools';
 
-import { ProfilesConfig } from './types';
+import {
+  type ProfilesConfig,
+  type SitePermissions,
+  type AuditLogEntry,
+  type Capability,
+  CAPABILITY_INFO,
+} from './types';
 import * as Storage from './storage';
 import { truncatePublicKeys } from './common';
 
 import logotype from './assets/logo/logotype.png';
 import CopyIcon from './assets/icons/copy-outline.svg';
 import CogIcon from './assets/icons/cog-outline.svg';
+import TrashIcon from './assets/icons/trash-outline.svg';
+import CloseCircleIcon from './assets/icons/close-circle-outline.svg';
 
-function Popup() {
-  let [publicKeyHexa, setPublicKeyHexa] = useState<string>();
-  let [publiKeyNIP19, setPublicKeyNIP19] = useState<string>();
-  let [selectedKeyType, setSelectedKeyType] = useState('npub');
-  let [profiles, setProfiles] = useState<ProfilesConfig>({});
+//#region Helpers >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-  useEffect(() => {
-    async function loadActiveProfile() {
-      // Always use stored active public key (it's always saved now)
-      const activePublicKey = await Storage.getActivePublicKey();
-      if (activePublicKey) {
-        setPublicKeyHexa(activePublicKey);
-      } else {
-        setPublicKeyHexa(undefined);
-        setPublicKeyNIP19(undefined);
-      }
-    }
+const DISPOSITION_STYLE: Record<string, { label: string; cls: string }> = {
+  'approved':      { label: 'Approved',      cls: 'disp-approved' },
+  'auto-approved': { label: 'Auto',          cls: 'disp-auto' },
+  'rejected':      { label: 'Denied',        cls: 'disp-rejected' },
+  'rate-limited':  { label: 'Rate Limited',  cls: 'disp-blocked' },
+  'cooldown':      { label: 'Cooldown',      cls: 'disp-blocked' },
+  'queue-full':    { label: 'Queue Full',    cls: 'disp-blocked' },
+  'deduped':       { label: 'Dedup',         cls: 'disp-muted' },
+  'auto-signed':   { label: 'Auto-signed',   cls: 'disp-auto' },
+  'error':         { label: 'Error',         cls: 'disp-error' },
+};
 
-    loadActiveProfile();
-
-    Storage.readProfiles().then(profiles => {
-      if (profiles) {
-        setProfiles(profiles);
-      }
-    });
-  }, []);
-
-  /**
-   * When active public key changes
-   */
-  useEffect(() => {
-    if (publicKeyHexa) {
-      setPublicKeyNIP19(nip19.npubEncode(publicKeyHexa));
-
-      Storage.readActiveRelays().then(relays => {
-        if (relays) {
-          let relaysList: string[] = [];
-          for (let url in relays) {
-            if (relays[url].write) {
-              relaysList.push(url);
-              if (relaysList.length >= 3) break;
-            }
-          }
-        }
-      });
-
-      console.log(`The profile for pubkey '${publicKeyHexa}' was loaded.`);
-    }
-  }, [publicKeyHexa]);
-
-  function handleKeyTypeSelect(event) {
-    setSelectedKeyType(event.target.value);
-  }
-
-  function goToOptionsPage() {
-    browser.tabs
-      .create({
-        url: browser.runtime.getURL('options.html'),
-        active: true
-      })
-      .then(() => {
-        window.close();
-      });
-  }
-
-  async function handleProfileChange(event) {
-    const pubKey = event.target.value;
-    setPublicKeyHexa(pubKey);
-    const profile = profiles[pubKey];
-    if (!profile) {
-      console.warn(`The profile for pubkey '${pubKey}' does not exist.`);
-      return;
-    }
-
-    // Always update active public key first
-    await Storage.setActivePublicKey(pubKey);
-    
-    // Then update private key based on PIN status
-    const pinEnabled = await Storage.isPinEnabled();
-    if (pinEnabled) {
-      // When PIN protection is enabled, update encrypted private key
-      if (profile.privateKey) {
-        await Storage.setEncryptedPrivateKey(profile.privateKey);
-      }
-    } else {
-      // When PIN protection is disabled, update active private key
-      await Storage.updateActivePrivateKey(profile.privateKey);
-    }
-  }
-
-  function clipboardCopyPubKey() {
-    navigator.clipboard.writeText(
-      (selectedKeyType === 'hex' ? publicKeyHexa : publiKeyNIP19) ?? ''
-    );
-  }
-
-  return (
-    <>
-      <h1>
-        <img src={logotype} alt="nos2x-fox" />
-      </h1>
-      {!publicKeyHexa ? (
-        <p>
-          You don't have a private key set. Use the{' '}
-          <a href="#" onClick={goToOptionsPage}>
-            options page
-          </a>{' '}
-          to set one.
-        </p>
-      ) : (
-        <>
-          <p>Your public key:</p>
-          <div className="public-key">
-            <div className="pubkey-show">
-              <code>
-                {truncatePublicKeys(
-                  (selectedKeyType === 'hex' ? publicKeyHexa : publiKeyNIP19) ?? ''
-                )}
-              </code>
-              <button
-                className="button-onlyicon"
-                onClick={clipboardCopyPubKey}
-                title="Copy the public key to the clipboard"
-              >
-                <CopyIcon />
-              </button>
-            </div>
-            <div className="select profile-switch">
-              <select value={publicKeyHexa} onChange={handleProfileChange}>
-                {Object.keys(profiles).map(profilePubKey => (
-                  <option value={profilePubKey} key={profilePubKey}>
-                    {profiles[profilePubKey].name ?? nip19.npubEncode(profilePubKey)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <p>
-            <a className="button" href="#" onClick={goToOptionsPage}>
-              <CogIcon className="svg-fill" /> Options
-            </a>
-          </p>
-        </>
-      )}
-    </>
-  );
+function DispChip({ disposition }: { disposition: string }) {
+  const s = DISPOSITION_STYLE[disposition] ?? { label: disposition, cls: '' };
+  return <span className={`disp-chip ${s.cls}`}>{s.label}</span>;
 }
 
-const root = createRoot(document.getElementById('main'));
-root.render(<Popup />);
+function timeAgo(iso: string): string {
+  try {
+    const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (sec < 5) return 'now';
+    if (sec < 60) return `${sec}s`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+    if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+    return `${Math.floor(sec / 86400)}d`;
+  } catch { return ''; }
+}
+
+//#endregion Helpers <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Audit Panel >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+interface AuditPanelState {
+  entries: AuditLogEntry[];
+  suppressedCount: number;
+}
+
+class AuditPanel extends Component<{}, AuditPanelState> {
+  state: AuditPanelState = { entries: [], suppressedCount: 0 };
+  private poll: any = null;
+
+  componentDidMount() {
+    this.load();
+    browser.runtime.sendMessage({ type: 'clearSuppressedCount' }).catch(() => {});
+    this.poll = setInterval(() => this.load(), 2500);
+  }
+  componentWillUnmount() { if (this.poll) clearInterval(this.poll); }
+
+  load = async () => {
+    try {
+      const r: any = await browser.runtime.sendMessage({ type: 'getActivityLog' });
+      if (r?.entries) this.setState({ entries: r.entries, suppressedCount: r.suppressedCount ?? 0 });
+    } catch {}
+  };
+
+  clear = async () => {
+    await browser.runtime.sendMessage({ type: 'clearActivityLog' });
+    this.setState({ entries: [], suppressedCount: 0 });
+  };
+
+  render() {
+    const { entries } = this.state;
+    const list = [...entries].reverse();
+
+    return (
+      <div className="panel audit-panel">
+        {list.length === 0 ? (
+          <p className="panel-empty">No activity yet</p>
+        ) : (
+          <>
+            <div className="audit-toolbar">
+              <button className="link-btn" onClick={this.clear}>Clear all</button>
+            </div>
+            <div className="audit-list">
+              {list.map(e => (
+                <div key={e.id} className={`audit-row${e.silent ? ' audit-silent' : ''}`}>
+                  <div className="audit-left">
+                    <span className="audit-host">{e.host}</span>
+                    <span className="audit-summary">{e.summary}</span>
+                  </div>
+                  <div className="audit-right">
+                    <DispChip disposition={e.disposition} />
+                    <span className="audit-age">{timeAgo(e.timestamp)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+}
+
+//#endregion Audit Panel <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Sites Panel >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+interface SitesPanelState { permissions: SitePermissions; }
+
+class SitesPanel extends Component<{}, SitesPanelState> {
+  state: SitesPanelState = { permissions: {} };
+
+  componentDidMount() { this.load(); }
+
+  load = async () => {
+    try {
+      const r: any = await browser.runtime.sendMessage({ type: 'getSitePermissions' });
+      if (r?.permissions) this.setState({ permissions: r.permissions });
+    } catch {}
+  };
+
+  revokeGrant = async (host: string, cap: Capability) => {
+    await browser.runtime.sendMessage({ type: 'revokeGrant', host, capability: cap });
+    this.load();
+  };
+  revokeAll = async (host: string) => {
+    await browser.runtime.sendMessage({ type: 'revokeAllGrants', host });
+    this.load();
+  };
+  removeSite = async (host: string) => {
+    await browser.runtime.sendMessage({ type: 'removeSite', host });
+    this.load();
+  };
+
+  render() {
+    const sites = Object.values(this.state.permissions);
+    const now = Math.floor(Date.now() / 1000);
+
+    if (!sites.length) {
+      return <div className="panel"><p className="panel-empty">No connected sites</p></div>;
+    }
+
+    return (
+      <div className="panel sites-panel">
+        {sites.map(site => {
+          const active = site.grants.filter(g => g.expires_at === null || g.expires_at > now);
+          return (
+            <div key={site.host} className="site-card">
+              <div className="site-card-top">
+                <div className="site-card-identity">
+                  <span className="site-host">{site.host}</span>
+                  <span className="site-stats">{site.request_count} req · {site.denied_count} denied</span>
+                </div>
+                <button className="icon-btn icon-btn-danger" onClick={() => this.removeSite(site.host)} title="Remove site">
+                  <TrashIcon />
+                </button>
+              </div>
+              {active.length > 0 ? (
+                <div className="grant-chips">
+                  {active.map(g => {
+                    const info = CAPABILITY_INFO[g.capability];
+                    return (
+                      <span key={g.capability} className="grant-chip">
+                        {info?.label || g.capability}
+                        <button className="grant-chip-x" onClick={() => this.revokeGrant(site.host, g.capability)} title="Revoke">×</button>
+                      </span>
+                    );
+                  })}
+                  {active.length > 1 && (
+                    <button className="link-btn link-btn-danger" onClick={() => this.revokeAll(site.host)}>Revoke all</button>
+                  )}
+                </div>
+              ) : (
+                <span className="site-no-grants">No active permissions</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+}
+
+//#endregion Sites Panel <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Identity Panel >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+interface IdentityPanelState {
+  pubHex: string | undefined;
+  pubNpub: string | undefined;
+  keyFmt: 'npub' | 'hex';
+  profiles: ProfilesConfig;
+  copied: boolean;
+}
+
+class IdentityPanel extends Component<{}, IdentityPanelState> {
+  state: IdentityPanelState = {
+    pubHex: undefined, pubNpub: undefined, keyFmt: 'npub', profiles: {}, copied: false,
+  };
+  private copyTimer: any = null;
+
+  componentDidMount() {
+    Storage.getActivePublicKey().then(pk => {
+      if (pk) this.setState({ pubHex: pk, pubNpub: nip19.npubEncode(pk) });
+    });
+    Storage.readProfiles().then(p => { if (p) this.setState({ profiles: p }); });
+  }
+
+  componentWillUnmount() { if (this.copyTimer) clearTimeout(this.copyTimer); }
+
+  openOptions = (e?: any) => {
+    if (e) e.preventDefault();
+    browser.runtime.openOptionsPage().catch(() => {
+      browser.tabs.create({ url: browser.runtime.getURL('options.html'), active: true });
+    }).finally(() => window.close());
+  };
+
+  switchProfile = async (e: any) => {
+    const pk = e.target.value;
+    this.setState({ pubHex: pk, pubNpub: nip19.npubEncode(pk) });
+    const profile = this.state.profiles[pk];
+    if (!profile) return;
+    await Storage.setActivePublicKey(pk);
+    const pinOn = await Storage.isPinEnabled();
+    if (pinOn) {
+      if (profile.privateKey) await Storage.setEncryptedPrivateKey(profile.privateKey);
+    } else {
+      await Storage.updateActivePrivateKey(profile.privateKey);
+    }
+  };
+
+  copyKey = () => {
+    const { keyFmt, pubHex, pubNpub } = this.state;
+    navigator.clipboard.writeText((keyFmt === 'hex' ? pubHex : pubNpub) ?? '');
+    this.setState({ copied: true });
+    if (this.copyTimer) clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => this.setState({ copied: false }), 1500);
+  };
+
+  toggleFmt = () => {
+    this.setState({ keyFmt: this.state.keyFmt === 'npub' ? 'hex' : 'npub' });
+  };
+
+  render() {
+    const { pubHex, pubNpub, keyFmt, profiles, copied } = this.state;
+
+    if (!pubHex) {
+      return (
+        <div className="panel identity-panel identity-empty">
+          <p>No key configured — open settings to add one.</p>
+        </div>
+      );
+    }
+
+    const displayKey = keyFmt === 'hex' ? pubHex : pubNpub;
+    const profileKeys = Object.keys(profiles);
+
+    return (
+      <div className="panel identity-panel">
+        <div className="id-key-row">
+          <button className="id-key-format" onClick={this.toggleFmt} title="Toggle format">
+            {keyFmt}
+          </button>
+          <code className="id-key-value">{truncatePublicKeys(displayKey ?? '', 14, 14)}</code>
+          <button className={`icon-btn${copied ? ' icon-btn-ok' : ''}`} onClick={this.copyKey} title="Copy">
+            {copied ? '✓' : <CopyIcon />}
+          </button>
+        </div>
+
+        {profileKeys.length > 1 && (
+          <div className="id-profile-switch">
+            <select value={pubHex} onChange={this.switchProfile}>
+              {profileKeys.map(pk => (
+                <option value={pk} key={pk}>
+                  {profiles[pk].name || truncatePublicKeys(nip19.npubEncode(pk), 12, 12)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+      </div>
+    );
+  }
+}
+
+//#endregion Identity Panel <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Main Popup >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+type Tab = 'identity' | 'sites' | 'audit';
+
+interface PopupState { tab: Tab; badge: number; }
+
+class Popup extends Component<{}, PopupState> {
+  state: PopupState = { tab: 'identity', badge: 0 };
+
+  componentDidMount() {
+    browser.runtime.sendMessage({ type: 'getActivityLog' }).then((r: any) => {
+      if (r?.suppressedCount) this.setState({ badge: r.suppressedCount });
+    }).catch(() => {});
+  }
+
+  setTab = (t: Tab) => {
+    this.setState({ tab: t, badge: t === 'audit' ? 0 : this.state.badge });
+  };
+
+  openOptions = () => {
+    browser.runtime.openOptionsPage().catch(() => {
+      browser.tabs.create({ url: browser.runtime.getURL('options.html'), active: true });
+    }).finally(() => window.close());
+  };
+
+  render() {
+    const { tab, badge } = this.state;
+
+    return (
+      <div className="popup-shell">
+        <header className="popup-header">
+          <img src={logotype} alt="Ribbit Signer" className="popup-logo" />
+          <button className="popup-header-settings" onClick={this.openOptions} title="Settings">
+            <CogIcon />
+          </button>
+        </header>
+
+        <nav className="popup-nav">
+          <button className={`nav-btn${tab === 'identity' ? ' nav-active' : ''}`} onClick={() => this.setTab('identity')}>
+            Identity
+          </button>
+          <button className={`nav-btn${tab === 'sites' ? ' nav-active' : ''}`} onClick={() => this.setTab('sites')}>
+            Sites
+          </button>
+          <button className={`nav-btn${tab === 'audit' ? ' nav-active' : ''}`} onClick={() => this.setTab('audit')}>
+            Audit
+            {badge > 0 && <span className="nav-badge">{badge}</span>}
+          </button>
+        </nav>
+
+        <div className="popup-content">
+          {tab === 'identity' && <IdentityPanel />}
+          {tab === 'sites' && <SitesPanel />}
+          {tab === 'audit' && <AuditPanel />}
+        </div>
+      </div>
+    );
+  }
+}
+
+//#endregion Main Popup <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+render(<Popup />, document.getElementById('main'));

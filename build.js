@@ -18,14 +18,14 @@ esbuild
       // code
       background: './src/background.ts',
       'content-script': './src/content-script.js',
-      'nostr-provider': './src/nostr-provider.js',
+      'nostr-provider': './src/nostr-provider.ts',
       types: './src/types.ts',
       storage: './src/storage.ts',
       common: './src/common.ts',
-      pin: './src/pin.jsx',
-      popup: './src/popup.jsx',
-      prompt: './src/prompt.jsx',
-      options: './src/options.jsx',
+      pin: './src/pin.tsx',
+      popup: './src/popup.tsx',
+      prompt: './src/prompt.tsx',
+      options: './src/options.tsx',
       // styles
       style: './src/style.scss'
     },
@@ -67,6 +67,12 @@ esbuild
       })
     ],
     sourcemap: isProd ? false : 'inline',
+    jsxFactory: 'createElement',
+    jsxFragment: '"Fragment"',
+    inject: ['./src/react-shim.ts'],
+    alias: {
+      'react': './src/react-shim.ts',
+    },
     define: {
       global: 'window'
     }

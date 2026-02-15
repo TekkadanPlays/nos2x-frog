@@ -1,33 +1,30 @@
 {
-  "name": "nos2x-fox",
-  "description": "Nostr Signer Extension (for Firefox)",
-  "version": "1.18.0",
+  "name": "ribbit-signer",
+  "description": "Nostr Signer Extension for ribbit.network",
+  "version": "2.0.0",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
-    "url": "https://github.com/diegogurpegui/nos2x-fox",
+    "url": "https://github.com/TekkadanPlays/ribbit-signer",
     "type": "github"
   },
   "scripts": {
     "build": "./build.js prod",
     "build:hosted": "./build.js prod-hosted",
     "watch": "ag -l --js | entr ./build.js",
-    "package:src": "cd src; zip -r nos2x-fox__src *; cd ..; mv src/nos2x-fox__src.zip ./var/releases/",
-    "package": "yarn run build; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/nos2x-fox.xpi",
-    "package:hosted": "yarn run build:hosted; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/nos2x-fox_hosted.xpi",
+    "package:src": "cd src; zip -r ribbit-signer__src *; cd ..; mv src/ribbit-signer__src.zip ./var/releases/",
+    "package": "yarn run build; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/ribbit-signer.xpi",
+    "package:hosted": "yarn run build:hosted; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/ribbit-signer_hosted.xpi",
     "start:firefox": "web-ext run --source-dir ./dist/"
   },
   "dependencies": {
     "date-fns": "4.1.0",
     "events": "^3.3.0",
+    "inferno": "9.0.11",
+    "inferno-create-element": "9.0.11",
     "nostr-tools": "^2.7.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "use-boolean-state": "^1.0.2",
-    "use-debounce": "^10.0.6",
     "webextension-polyfill": "0.12.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.2",
     "@types/web": "^0.0.300",
     "@types/webextension-polyfill": "^0.12.1",
     "esbuild": "^0.27.1",

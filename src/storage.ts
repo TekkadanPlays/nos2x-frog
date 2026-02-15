@@ -8,7 +8,14 @@ import {
   PermissionConfig,
   ProfileConfig,
   ProfilesConfig,
-  RelaysConfig
+  RelaysConfig,
+  type Capability,
+  type CapabilityGrant,
+  type SitePermission,
+  type SitePermissions,
+  type SecurityPreferences,
+  PermissionDuration,
+  DEFAULT_SECURITY_PREFERENCES,
 } from './types';
 import {
   convertHexToUint8Array,
@@ -84,6 +91,30 @@ export async function setPinCacheDuration(durationMs: number): Promise<void> {
     [ConfigurationKeys.PIN_CACHE_DURATION]: durationMs
   });
 }
+
+//#region NIP-42 Auto-Sign >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Checks if NIP-42 AUTH auto-signing is enabled.
+ * When enabled, kind 22242 (Client Authentication) events are signed
+ * automatically without prompting, enabling seamless relay authentication
+ * at scale (hundreds/thousands of relays).
+ */
+export async function isNip42AutoSignEnabled(): Promise<boolean> {
+  const data = await browser.storage.local.get(ConfigurationKeys.NIP42_AUTO_SIGN);
+  return (data[ConfigurationKeys.NIP42_AUTO_SIGN] as boolean) ?? false;
+}
+
+/**
+ * Sets NIP-42 AUTH auto-signing enabled/disabled
+ */
+export async function setNip42AutoSign(enabled: boolean): Promise<void> {
+  await browser.storage.local.set({
+    [ConfigurationKeys.NIP42_AUTO_SIGN]: enabled
+  });
+}
+
+//#endregion NIP-42 Auto-Sign <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 /**
  * Gets the encrypted private key from storage
@@ -721,3 +752,333 @@ async function clearUnused(): Promise<void> {
 clearUnused()
   .then(() => console.debug('Storage cleared from unused.'))
   .catch(error => console.warn('There was a problem clearing the storage from unused.', error));
+
+//#region Site Permissions (new granular model) >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Read all site permissions.
+ */
+export async function readSitePermissions(): Promise<SitePermissions> {
+  const data = await browser.storage.local.get(ConfigurationKeys.SITE_PERMISSIONS);
+  return (data[ConfigurationKeys.SITE_PERMISSIONS] as SitePermissions) ?? {};
+}
+
+/**
+ * Write all site permissions.
+ */
+export async function writeSitePermissions(perms: SitePermissions): Promise<void> {
+  await browser.storage.local.set({
+    [ConfigurationKeys.SITE_PERMISSIONS]: perms,
+  });
+}
+
+/**
+ * Get or create a SitePermission record for a host.
+ * Increments request_count and updates last_active.
+ */
+export async function touchSite(host: string): Promise<SitePermission> {
+  const perms = await readSitePermissions();
+  const now = Math.floor(Date.now() / 1000);
+
+  if (!perms[host]) {
+    perms[host] = {
+      host,
+      first_seen: now,
+      last_active: now,
+      request_count: 1,
+      denied_count: 0,
+      grants: [],
+    };
+  } else {
+    perms[host].last_active = now;
+    perms[host].request_count++;
+  }
+
+  await writeSitePermissions(perms);
+  return perms[host];
+}
+
+/**
+ * Increment the denied count for a host.
+ */
+export async function incrementDenied(host: string): Promise<void> {
+  const perms = await readSitePermissions();
+  if (perms[host]) {
+    perms[host].denied_count++;
+    await writeSitePermissions(perms);
+  }
+}
+
+/**
+ * Get the SitePermission for a host (without touching it).
+ */
+export async function getSitePermission(host: string): Promise<SitePermission | null> {
+  const perms = await readSitePermissions();
+  return perms[host] ?? null;
+}
+
+/**
+ * Check if a host has an active (non-expired) grant for a capability.
+ * For signEvent grants with allowedKinds, also checks the event kind.
+ */
+export async function hasActiveGrant(
+  host: string,
+  capability: Capability,
+  eventKind?: number
+): Promise<CapabilityGrant | null> {
+  const perms = await readSitePermissions();
+  const site = perms[host];
+  if (!site) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const grant of site.grants) {
+    if (grant.capability !== capability) continue;
+
+    // Check expiry
+    if (grant.expires_at !== null && grant.expires_at <= now) continue;
+
+    // For signEvent: check kind allowlist
+    if (capability === 'signEvent' && grant.allowedKinds && grant.allowedKinds.length > 0) {
+      if (eventKind !== undefined && !grant.allowedKinds.includes(eventKind)) continue;
+    }
+
+    return grant;
+  }
+
+  return null;
+}
+
+/**
+ * Add a capability grant for a host.
+ */
+export async function addGrant(
+  host: string,
+  capability: Capability,
+  duration: PermissionDuration,
+  allowedKinds?: number[]
+): Promise<void> {
+  const perms = await readSitePermissions();
+  const now = Math.floor(Date.now() / 1000);
+
+  if (!perms[host]) {
+    perms[host] = {
+      host,
+      first_seen: now,
+      last_active: now,
+      request_count: 0,
+      denied_count: 0,
+      grants: [],
+    };
+  }
+
+  // Calculate expiry
+  let expires_at: number | null = null;
+  switch (duration) {
+    case 'once':    expires_at = now; break; // will be consumed immediately
+    case 'session': expires_at = null; break; // cleared on restart
+    case '5m':      expires_at = now + 5 * 60; break;
+    case '30m':     expires_at = now + 30 * 60; break;
+    case '1h':      expires_at = now + 60 * 60; break;
+    case '8h':      expires_at = now + 8 * 60 * 60; break;
+    case '24h':     expires_at = now + 24 * 60 * 60; break;
+    case 'forever': expires_at = null; break;
+  }
+
+  const grant: CapabilityGrant = {
+    capability,
+    granted_at: now,
+    expires_at,
+    duration,
+    allowedKinds,
+  };
+
+  // Remove any existing grant for same capability (replace)
+  perms[host].grants = perms[host].grants.filter(g => g.capability !== capability);
+  perms[host].grants.push(grant);
+
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Consume a one-time grant (remove it after use).
+ */
+export async function consumeOnceGrant(host: string, capability: Capability): Promise<void> {
+  const perms = await readSitePermissions();
+  const site = perms[host];
+  if (!site) return;
+
+  site.grants = site.grants.filter(
+    g => !(g.capability === capability && g.duration === 'once')
+  );
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Revoke a specific capability grant for a host.
+ */
+export async function revokeGrant(host: string, capability: Capability): Promise<void> {
+  const perms = await readSitePermissions();
+  const site = perms[host];
+  if (!site) return;
+
+  site.grants = site.grants.filter(g => g.capability !== capability);
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Revoke ALL grants for a host.
+ */
+export async function revokeAllGrants(host: string): Promise<void> {
+  const perms = await readSitePermissions();
+  const site = perms[host];
+  if (!site) return;
+
+  site.grants = [];
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Remove a site entirely from the permissions store.
+ */
+export async function removeSite(host: string): Promise<void> {
+  const perms = await readSitePermissions();
+  delete perms[host];
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Purge all expired grants across all sites.
+ */
+export async function purgeExpiredGrants(): Promise<number> {
+  const perms = await readSitePermissions();
+  const now = Math.floor(Date.now() / 1000);
+  let purged = 0;
+
+  for (const host in perms) {
+    const before = perms[host].grants.length;
+    perms[host].grants = perms[host].grants.filter(
+      g => g.expires_at === null || g.expires_at > now
+    );
+    purged += before - perms[host].grants.length;
+  }
+
+  if (purged > 0) {
+    await writeSitePermissions(perms);
+  }
+  return purged;
+}
+
+/**
+ * Clear all session-scoped grants (called on browser startup).
+ */
+export async function clearSessionGrants(): Promise<void> {
+  const perms = await readSitePermissions();
+  for (const host in perms) {
+    perms[host].grants = perms[host].grants.filter(g => g.duration !== 'session');
+  }
+  await writeSitePermissions(perms);
+}
+
+/**
+ * Get the list of active (non-expired) capabilities for a host.
+ */
+export async function getActiveCapabilities(host: string): Promise<Capability[]> {
+  const perms = await readSitePermissions();
+  const site = perms[host];
+  if (!site) return [];
+
+  const now = Math.floor(Date.now() / 1000);
+  return site.grants
+    .filter(g => g.expires_at === null || g.expires_at > now)
+    .map(g => g.capability);
+}
+
+//#endregion Site Permissions <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Security Preferences >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Read security preferences.
+ */
+export async function readSecurityPreferences(): Promise<SecurityPreferences> {
+  const data = await browser.storage.local.get(ConfigurationKeys.SECURITY_PREFERENCES);
+  const stored = data[ConfigurationKeys.SECURITY_PREFERENCES] as Partial<SecurityPreferences> | undefined;
+  return { ...DEFAULT_SECURITY_PREFERENCES, ...stored };
+}
+
+/**
+ * Write security preferences.
+ */
+export async function writeSecurityPreferences(prefs: SecurityPreferences): Promise<void> {
+  await browser.storage.local.set({
+    [ConfigurationKeys.SECURITY_PREFERENCES]: prefs,
+  });
+}
+
+/**
+ * Update a single security preference.
+ */
+export async function updateSecurityPreference<K extends keyof SecurityPreferences>(
+  key: K,
+  value: SecurityPreferences[K]
+): Promise<void> {
+  const prefs = await readSecurityPreferences();
+  prefs[key] = value;
+  await writeSecurityPreferences(prefs);
+}
+
+//#endregion Security Preferences <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Legacy Permission Migration >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Migrate old numeric-level permissions to the new granular model.
+ * Called once on startup if old permissions exist.
+ */
+export async function migrateOldPermissions(): Promise<boolean> {
+  const profiles = await readProfiles();
+  let migrated = false;
+
+  for (const pubKey in profiles) {
+    const profile = profiles[pubKey];
+    if (!profile.permissions || Object.keys(profile.permissions).length === 0) continue;
+
+    for (const [host, perm] of Object.entries(profile.permissions)) {
+      // Map old numeric levels to capabilities
+      const capabilities: Capability[] = [];
+      if (perm.level >= 1) capabilities.push('getPublicKey');
+      if (perm.level >= 5) capabilities.push('getRelays');
+      if (perm.level >= 10) capabilities.push('signEvent');
+      if (perm.level >= 20) {
+        capabilities.push('nip04.encrypt', 'nip04.decrypt', 'nip44.encrypt', 'nip44.decrypt');
+      }
+
+      // Map old condition to duration
+      let duration: PermissionDuration = PermissionDuration.FOREVER;
+      if (perm.condition === 'expirable_5m') duration = PermissionDuration.MINUTES_5;
+      else if (perm.condition === 'expirable_1h') duration = PermissionDuration.HOURS_1;
+      else if (perm.condition === 'expirable_8h') duration = PermissionDuration.HOURS_8;
+      else if (perm.condition === 'single') duration = PermissionDuration.ONCE;
+
+      // Create grants
+      for (const cap of capabilities) {
+        await addGrant(host, cap, duration);
+      }
+
+      migrated = true;
+    }
+
+    // Clear old permissions from profile
+    delete profile.permissions;
+  }
+
+  if (migrated) {
+    await updateProfiles(profiles);
+    console.log('[Migration] Old permissions migrated to new granular model.');
+  }
+
+  return migrated;
+}
+
+//#endregion Legacy Permission Migration <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

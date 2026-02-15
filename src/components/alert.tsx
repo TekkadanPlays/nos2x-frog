@@ -1,16 +1,10 @@
-import browser from 'webextension-polyfill';
-import React, { useState, useEffect } from 'react';
+import { createElement } from 'inferno-create-element';
 
 import InformationCircleIcon from '../assets/icons/information-circle-outline.svg';
 import CheckmarkCircleIcon from '../assets/icons/checkmark-circle-outline.svg';
 import WarningDiceIcon from '../assets/icons/warning-outline.svg';
 
-interface AlertProps {
-  message: String;
-  type: 'info|warning|success';
-}
-
-export function Alert<AlertProps>({ message, type }) {
+export function Alert({ message, type }: { message: string; type: string }) {
   return (
     <div className={`alert ${type}`}>
       {type == 'info' ? (
