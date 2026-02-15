@@ -12,6 +12,7 @@ import {
   type RelaysConfig,
   type SitePermissions,
   type SitePermission,
+  type AuditLogEntry,
   type Capability,
   CAPABILITY_INFO,
 } from './types';
@@ -66,12 +67,15 @@ interface OptionsState {
   profileImportJson: string;
   isExportModalShown: boolean;
   isImportModalShown: boolean;
+  newProfileName: string;
   privateKey: string;
   isKeyHidden: boolean;
   relays: RelayConfig[];
   newRelayURL: string;
   isNewRelayURLValid: boolean;
   sitePermissions: SitePermissions;
+  expandedSiteHost: string | null;
+  siteAuditEntries: AuditLogEntry[];
   message: string;
   messageType: string;
   version: string;
@@ -91,12 +95,15 @@ class Options extends Component<{}, OptionsState> {
     profileImportJson: '',
     isExportModalShown: false,
     isImportModalShown: false,
+    newProfileName: '',
     privateKey: '',
     isKeyHidden: true,
     relays: [],
     newRelayURL: '',
     isNewRelayURLValid: true,
     sitePermissions: {},
+    expandedSiteHost: null,
+    siteAuditEntries: [],
     message: '',
     messageType: 'info',
     version: '0.0.0',
@@ -179,6 +186,7 @@ class Options extends Component<{}, OptionsState> {
       selectedProfilePubKey: '',
       relays: [],
       privateKey: '',
+      newProfileName: '',
     });
   };
 
@@ -329,6 +337,12 @@ class Options extends Component<{}, OptionsState> {
       const newPubKey = derivePublicKeyFromPrivateKey(hexPrivateKey);
       profiles[newPubKey] = profiles[selectedProfilePubKey];
 
+      // Apply name from new profile flow
+      const trimmedName = this.state.newProfileName?.trim();
+      if (trimmedName) {
+        profiles[newPubKey].name = trimmedName;
+      }
+
       const pinEnabled = await Storage.isPinEnabled();
       if (pinEnabled) {
         try {
@@ -448,7 +462,21 @@ class Options extends Component<{}, OptionsState> {
     if (window.confirm(`Remove ${host} from known sites?`)) {
       await Storage.removeSite(host);
       this.showMessage(`Removed ${host}`);
+      this.setState({ expandedSiteHost: null, siteAuditEntries: [] });
       this.reloadSitePermissions();
+    }
+  };
+
+  handleExpandSite = async (host: string) => {
+    if (this.state.expandedSiteHost === host) {
+      this.setState({ expandedSiteHost: null, siteAuditEntries: [] });
+      return;
+    }
+    try {
+      const r: any = await browser.runtime.sendMessage({ type: 'getActivityLogByHost', host });
+      this.setState({ expandedSiteHost: host, siteAuditEntries: r?.entries || [] });
+    } catch {
+      this.setState({ expandedSiteHost: host, siteAuditEntries: [] });
     }
   };
 
@@ -631,6 +659,16 @@ class Options extends Component<{}, OptionsState> {
             <div className="card-body">
               <div className="prof-detail-header">
                 <span className="prof-detail-badge">New Profile</span>
+              </div>
+              <div className="form-control">
+                <span className="form-label">Profile name</span>
+                <input
+                  type="text"
+                  value={this.state.newProfileName}
+                  onInput={(e: any) => this.setState({ newProfileName: e.target.value })}
+                  placeholder="e.g. Main, Work, Burner..."
+                />
+                <span className="form-hint">Optional. You can change this later.</span>
               </div>
               <div className="form-control">
                 <span className="form-label">Private key</span>
@@ -842,13 +880,13 @@ class Options extends Component<{}, OptionsState> {
   }
 
   renderPermissionsSection() {
-    const { sitePermissions } = this.state;
+    const { sitePermissions, expandedSiteHost, siteAuditEntries } = this.state;
     const sites = Object.values(sitePermissions);
     const now = Math.floor(Date.now() / 1000);
     return (
       <div className="opts-section">
         <h2 className="opts-section-title">Site Permissions</h2>
-        <p className="opts-section-desc">Sites that have requested signing access. Revoke individual grants or clear all permissions for a site.</p>
+        <p className="opts-section-desc">Sites that have requested signing access. Click a site to view its audit log.</p>
 
         {sites.length === 0 ? (
           <div className="card">
@@ -860,16 +898,19 @@ class Options extends Component<{}, OptionsState> {
           <div className="sites-list">
             {sites.map((site: SitePermission) => {
               const activeGrants = site.grants.filter(g => g.expires_at === null || g.expires_at > now);
+              const isExpanded = expandedSiteHost === site.host;
+              const auditList = isExpanded ? [...siteAuditEntries].reverse() : [];
               return (
-                <div key={site.host} className="card">
+                <div key={site.host} className={`card${isExpanded ? ' card-expanded' : ''}`}>
                   <div className="card-body">
-                    <div className="site-perm-header">
+                    <div className="site-perm-header" onClick={() => this.handleExpandSite(site.host)} style={{ cursor: 'pointer' }}>
                       <strong>{site.host}</strong>
                       <div className="site-perm-stats">
                         <span className="site-perm-stat">{site.request_count} requests</span>
                         {site.denied_count > 0 && <span className="site-perm-stat site-perm-stat-warn">{site.denied_count} denied</span>}
+                        <span className="site-perm-stat">First seen {formatDistance(new Date(site.first_seen * 1000), new Date(), { addSuffix: true })}</span>
                       </div>
-                      <button className="button-onlyicon icon-btn-danger" onClick={() => this.handleRevokeAllGrants(site.host)} title="Revoke all">
+                      <button className="button-onlyicon icon-btn-danger" onClick={(e: any) => { e.stopPropagation(); this.handleRevokeAllGrants(site.host); }} title="Revoke all">
                         <TrashIcon />
                       </button>
                     </div>
@@ -891,6 +932,33 @@ class Options extends Component<{}, OptionsState> {
                       </div>
                     ) : (
                       <p className="site-perm-empty">No active grants</p>
+                    )}
+
+                    {isExpanded && (
+                      <div className="site-audit-section">
+                        <div className="site-audit-header">
+                          <strong>Audit Log</strong>
+                          <span className="site-perm-stat">{auditList.length} entries</span>
+                        </div>
+                        {auditList.length === 0 ? (
+                          <p className="site-perm-empty">No audit entries for this site.</p>
+                        ) : (
+                          <div className="site-audit-list">
+                            {auditList.slice(0, 50).map(entry => (
+                              <div key={entry.id} className="site-audit-row">
+                                <div className="site-audit-info">
+                                  <span className="site-audit-summary">{entry.summary}</span>
+                                  {entry.eventKindName && <span className="site-audit-kind">{entry.eventKindName}</span>}
+                                </div>
+                                <div className="site-audit-right">
+                                  <span className={`site-audit-disp site-audit-disp-${entry.disposition}`}>{entry.disposition}</span>
+                                  <span className="site-audit-time">{format(new Date(entry.timestamp), 'MMM d, HH:mm')}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

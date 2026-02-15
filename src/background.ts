@@ -30,8 +30,8 @@ import { getCachedPin, setCachedPin, clearCachedPin } from './pinCache';
 import { decryptPrivateKey, encryptPrivateKey } from './pinEncryption';
 import { clearUint8Array, clearStringReference } from './memoryUtils';
 import {
-  logRequest, buildSummary, buildAuditExtra, getEntries, getSuppressedCount,
-  clearSuppressedCount, clearLog,
+  logRequest, buildSummary, buildAuditExtra, getEntries, getEntriesByHost,
+  getSuppressedCount, clearSuppressedCount, clearLog,
 } from './requestLog';
 
 //#region Prompt & PIN Maps --------------------------------------------------
@@ -137,6 +137,9 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any) => {
   // Activity log queries from popup
   if (message.type === 'getActivityLog') {
     return { entries: getEntries(), suppressedCount: getSuppressedCount() };
+  }
+  if (message.type === 'getActivityLogByHost') {
+    return { entries: getEntriesByHost(message.host) };
   }
   if (message.type === 'clearActivityLog') {
     clearLog();

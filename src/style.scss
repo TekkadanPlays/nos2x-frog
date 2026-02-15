@@ -333,7 +333,7 @@ button,
   justify-content: center;
   background: none;
   border: none;
-  color: $color-text-dim;
+  color: $color-text-muted;
   padding: 0.3em;
   border-radius: $radius-sm;
   cursor: pointer;
@@ -558,15 +558,22 @@ button,
 .toggle {
   position: relative;
   width: 36px;
+  min-width: 36px;
+  max-width: 36px;
   height: 20px;
+  min-height: 20px;
+  max-height: 20px;
   appearance: none;
+  -webkit-appearance: none;
   background-color: $color-bg-surface;
   border: 1px solid $color-border-emphasis;
   border-radius: $radius-pill;
   cursor: pointer;
   transition: background-color $transition-fast, border-color $transition-fast;
   flex-shrink: 0;
+  flex-grow: 0;
   padding: 0;
+  margin: 0;
 
   &::after {
     content: '';
@@ -1001,7 +1008,7 @@ input,
   flex: 1;
   background: none;
   border: none;
-  color: $color-text-dim;
+  color: $color-text-muted;
   padding: 0.5em 0;
   font-size: 0.72em;
   font-weight: 600;
@@ -1080,7 +1087,7 @@ input,
 .link-btn {
   background: none;
   border: none;
-  color: $color-text-dim;
+  color: $color-text-muted;
   font-size: 0.75em;
   cursor: pointer;
   padding: 0.2em 0.4em;
@@ -1619,7 +1626,7 @@ button.opts-nav-item {
   svg {
     width: 14px;
     height: 14px;
-    color: $color-text-dim;
+    color: $color-text-muted;
     flex-shrink: 0;
   }
 }
@@ -1744,7 +1751,7 @@ button.opts-nav-item {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    color: $color-text-dim;
+    color: $color-text-muted;
   }
   input {
     flex: 1;
@@ -1766,7 +1773,7 @@ button.opts-nav-item {
   gap: 0.25em;
   font-size: 0.72em;
   font-weight: 600;
-  color: $color-text-dim;
+  color: $color-text-muted;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -1854,6 +1861,114 @@ button.opts-nav-item {
 .site-grant-meta {
   font-size: 0.72em;
   color: $color-text-dim;
+}
+
+// Card expanded state
+.card-expanded {
+  border-color: $color-border-emphasis;
+}
+
+// Per-site audit log section
+.site-audit-section {
+  margin-top: 0.8em;
+  padding-top: 0.8em;
+  border-top: 1px solid $color-border;
+}
+
+.site-audit-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.5em;
+
+  strong {
+    font-size: 0.85em;
+    color: $color-text;
+  }
+}
+
+.site-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.site-audit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35em 0;
+  border-top: 1px solid $color-border;
+  gap: 0.5em;
+
+  &:first-child { border-top: none; }
+}
+
+.site-audit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05em;
+  min-width: 0;
+}
+
+.site-audit-summary {
+  font-size: 0.8em;
+  color: $color-text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-audit-kind {
+  font-size: 0.68em;
+  color: $color-text-dim;
+}
+
+.site-audit-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-shrink: 0;
+}
+
+.site-audit-disp {
+  font-size: 0.68em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15em 0.4em;
+  border-radius: $radius-sm;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: $color-text-muted;
+
+  &.site-audit-disp-approved,
+  &.site-audit-disp-auto-approved,
+  &.site-audit-disp-auto-signed {
+    color: $color-success;
+    background-color: rgba($color-success, 0.1);
+  }
+  &.site-audit-disp-rejected {
+    color: $color-danger-light;
+    background-color: rgba($color-danger, 0.1);
+  }
+  &.site-audit-disp-rate-limited,
+  &.site-audit-disp-cooldown,
+  &.site-audit-disp-queue-full {
+    color: $color-warning-light;
+    background-color: rgba($color-warning-light, 0.1);
+  }
+  &.site-audit-disp-error {
+    color: $color-danger;
+    background-color: rgba($color-danger, 0.1);
+  }
+}
+
+.site-audit-time {
+  font-size: 0.68em;
+  color: $color-text-dim;
+  white-space: nowrap;
 }
 
 // Danger zone row
