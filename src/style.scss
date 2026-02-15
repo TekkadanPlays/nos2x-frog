@@ -949,10 +949,12 @@ input,
 /* ---- Popup ---- */
 .popup-main {
   width: 400px;
-  min-height: 480px;
+  height: 520px;
+  max-height: 520px;
   display: flex;
   flex-direction: column;
   background-color: $color-bg;
+  overflow: hidden;
 }
 
 .popup-shell {
@@ -1263,18 +1265,55 @@ input,
 }
 
 .audit-list {
-  max-height: 360px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+// Audit group — entries grouped by host
+.audit-group {
+  &:not(:first-child) {
+    margin-top: 0.4em;
+  }
+}
+
+.audit-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35em 0.6em;
+  background-color: rgba($color-bg-surface, 0.5);
+  border-radius: $radius-sm;
+  margin-bottom: 1px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.audit-group-host {
+  font-weight: 600;
+  color: $color-text;
+  font-size: 0.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-group-count {
+  font-size: 0.68em;
+  color: $color-text-muted;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.06);
+  padding: 0.1em 0.45em;
+  border-radius: $radius-pill;
+  flex-shrink: 0;
 }
 
 .audit-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.45em 0.6em;
+  padding: 0.35em 0.6em 0.35em 1em;
   border-radius: $radius-sm;
   font-size: 0.78em;
   transition: background-color $transition-fast;
@@ -1290,18 +1329,9 @@ input,
   flex: 1;
 }
 
-.audit-host {
-  font-weight: 600;
-  color: $color-text;
-  font-size: 0.85em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .audit-summary {
-  color: $color-text-dim;
-  font-size: 0.8em;
+  color: $color-text-muted;
+  font-size: 0.82em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

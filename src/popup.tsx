@@ -84,6 +84,15 @@ class AuditPanel extends Component<{}, AuditPanelState> {
     const { entries } = this.state;
     const list = [...entries].reverse();
 
+    // Group entries by host
+    const grouped: Record<string, AuditLogEntry[]> = {};
+    for (const e of list) {
+      const key = e.host || 'unknown';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(e);
+    }
+    const hosts = Object.keys(grouped);
+
     return (
       <div className="panel audit-panel">
         {list.length === 0 ? (
@@ -94,16 +103,23 @@ class AuditPanel extends Component<{}, AuditPanelState> {
               <button className="link-btn" onClick={this.clear}>Clear all</button>
             </div>
             <div className="audit-list">
-              {list.map(e => (
-                <div key={e.id} className={`audit-row${e.silent ? ' audit-silent' : ''}`}>
-                  <div className="audit-left">
-                    <span className="audit-host">{e.host}</span>
-                    <span className="audit-summary">{e.summary}</span>
+              {hosts.map(host => (
+                <div key={host} className="audit-group">
+                  <div className="audit-group-header">
+                    <span className="audit-group-host">{host}</span>
+                    <span className="audit-group-count">{grouped[host].length}</span>
                   </div>
-                  <div className="audit-right">
-                    <DispChip disposition={e.disposition} />
-                    <span className="audit-age">{timeAgo(e.timestamp)}</span>
-                  </div>
+                  {grouped[host].map(e => (
+                    <div key={e.id} className={`audit-row${e.silent ? ' audit-silent' : ''}`}>
+                      <div className="audit-left">
+                        <span className="audit-summary">{e.summary}</span>
+                      </div>
+                      <div className="audit-right">
+                        <DispChip disposition={e.disposition} />
+                        <span className="audit-age">{timeAgo(e.timestamp)}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
