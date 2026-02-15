@@ -41,6 +41,11 @@ const openPromptMap: Record<
   { id: string; windowId?: number; resolve: Function; reject: Function }
 > = {};
 
+// Gate to prevent multiple popup windows from opening concurrently.
+// When the first request starts creating a window, subsequent requests
+// await this same promise instead of spawning additional popups.
+let pendingWindowPromise: Promise<browser.Windows.Window | browser.Tabs.Tab> | null = null;
+
 const pinPromptMap: Record<
   string,
   { id: string; windowId?: number; resolve: Function; reject: Function; mode: string }
@@ -319,31 +324,37 @@ async function promptForPermission(
   return new Promise((resolve, reject) => {
     const promptPageURL = `${browser.runtime.getURL('prompt.html')}`;
 
-    let openPromptPromise: Promise<browser.Windows.Window | browser.Tabs.Tab>;
+    // Determine how to get a window: reuse existing, join pending creation, or create new.
+    let windowPromise: Promise<browser.Windows.Window | browser.Tabs.Tab>;
 
-    if (Object.values(openPromptMap).length > 0) {
-      openPromptPromise = new Promise((res, rej) => {
-        const existing = Object.values(openPromptMap).find(({ windowId }) => windowId);
-        if (existing) {
-          browser.windows.get(existing.windowId as number).then(win => res(win));
-        } else {
-          rej();
-        }
-      });
+    const existingEntry = Object.values(openPromptMap).find(({ windowId }) => windowId);
+    if (existingEntry) {
+      // A prompt window already exists and is tracked — reuse it.
+      windowPromise = browser.windows
+        ? browser.windows.get(existingEntry.windowId as number)
+        : browser.tabs.get(existingEntry.windowId as number);
+    } else if (pendingWindowPromise) {
+      // Another request is already creating a window — wait for it instead of spawning a second.
+      windowPromise = pendingWindowPromise;
     } else {
+      // First request — create the popup and store the promise as a gate.
       if (browser.windows) {
-        openPromptPromise = browser.windows.create({
+        pendingWindowPromise = browser.windows.create({
           url: promptPageURL,
           type: 'popup',
           width: 640,
-          height: 520
+          height: 520,
         });
       } else {
-        openPromptPromise = browser.tabs.create({ url: promptPageURL, active: true });
+        pendingWindowPromise = browser.tabs.create({ url: promptPageURL, active: true });
       }
+      windowPromise = pendingWindowPromise;
     }
 
-    openPromptPromise.then(win => {
+    windowPromise.then(win => {
+      // Clear the gate once the window is known.
+      pendingWindowPromise = null;
+
       openPromptMap[id] = { id, windowId: win.id, resolve, reject };
       PromptManager.add({
         id,
@@ -361,6 +372,7 @@ async function promptForPermission(
         eventKindName,
       });
     }).catch(err => {
+      pendingWindowPromise = null;
       console.error('[Ribbit Signer] Failed to open prompt window:', err);
       reject(err);
     });
