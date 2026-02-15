@@ -55,14 +55,19 @@ function timeAgo(iso: string): string {
 interface AuditPanelState {
   entries: AuditLogEntry[];
   suppressedCount: number;
+  expandedGroups: Set<string>;
+  profiles: ProfilesConfig;
 }
 
+const PREVIEW_COUNT = 3;
+
 class AuditPanel extends Component<{}, AuditPanelState> {
-  state: AuditPanelState = { entries: [], suppressedCount: 0 };
+  state: AuditPanelState = { entries: [], suppressedCount: 0, expandedGroups: new Set(), profiles: {} };
   private poll: any = null;
 
   componentDidMount() {
     this.load();
+    Storage.readProfiles().then(p => { if (p) this.setState({ profiles: p }); });
     browser.runtime.sendMessage({ type: 'clearSuppressedCount' }).catch(() => {});
     this.poll = setInterval(() => this.load(), 2500);
   }
@@ -77,21 +82,35 @@ class AuditPanel extends Component<{}, AuditPanelState> {
 
   clear = async () => {
     await browser.runtime.sendMessage({ type: 'clearActivityLog' });
-    this.setState({ entries: [], suppressedCount: 0 });
+    this.setState({ entries: [], suppressedCount: 0, expandedGroups: new Set() });
   };
 
+  toggleGroup = (key: string) => {
+    const next = new Set(this.state.expandedGroups);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this.setState({ expandedGroups: next });
+  };
+
+  profileLabel(pubkey: string): string {
+    const prof = this.state.profiles[pubkey];
+    if (prof?.name) return prof.name;
+    try { return truncatePublicKeys(nip19.npubEncode(pubkey), 10, 10) as string; } catch { return pubkey.substring(0, 12) + '…'; }
+  }
+
   render() {
-    const { entries } = this.state;
+    const { entries, expandedGroups, profiles } = this.state;
     const list = [...entries].reverse();
 
-    // Group entries by host
-    const grouped: Record<string, AuditLogEntry[]> = {};
+    // Group: npub → host → entries
+    const byProfile: Record<string, Record<string, AuditLogEntry[]>> = {};
     for (const e of list) {
-      const key = e.host || 'unknown';
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(e);
+      const pk = e.profilePubKey || '_unknown';
+      const host = e.host || 'unknown';
+      if (!byProfile[pk]) byProfile[pk] = {};
+      if (!byProfile[pk][host]) byProfile[pk][host] = [];
+      byProfile[pk][host].push(e);
     }
-    const hosts = Object.keys(grouped);
+    const pubkeys = Object.keys(byProfile);
 
     return (
       <div className="panel audit-panel">
@@ -103,25 +122,57 @@ class AuditPanel extends Component<{}, AuditPanelState> {
               <button className="link-btn" onClick={this.clear}>Clear all</button>
             </div>
             <div className="audit-list">
-              {hosts.map(host => (
-                <div key={host} className="audit-group">
-                  <div className="audit-group-header">
-                    <span className="audit-group-host">{host}</span>
-                    <span className="audit-group-count">{grouped[host].length}</span>
+              {pubkeys.map(pk => {
+                const hostMap = byProfile[pk];
+                const hosts = Object.keys(hostMap);
+                const totalForProfile = hosts.reduce((n, h) => n + hostMap[h].length, 0);
+                return (
+                  <div key={pk} className="audit-profile-group">
+                    {pubkeys.length > 1 && (
+                      <div className="audit-profile-header">
+                        <span className="audit-profile-label">{pk === '_unknown' ? 'Unknown profile' : this.profileLabel(pk)}</span>
+                        <span className="audit-group-count">{totalForProfile}</span>
+                      </div>
+                    )}
+                    {hosts.map(host => {
+                      const hostEntries = hostMap[host];
+                      const groupKey = `${pk}:${host}`;
+                      const isExpanded = expandedGroups.has(groupKey);
+                      const visible = isExpanded ? hostEntries : hostEntries.slice(0, PREVIEW_COUNT);
+                      const hasMore = hostEntries.length > PREVIEW_COUNT;
+                      return (
+                        <div key={host} className="audit-group">
+                          <div className="audit-group-header" onClick={() => this.toggleGroup(groupKey)} style={{ cursor: 'pointer' }}>
+                            <span className="audit-group-host">{host}</span>
+                            <span className="audit-group-count">{hostEntries.length}</span>
+                          </div>
+                          {visible.map(e => (
+                            <div key={e.id} className={`audit-row${e.silent ? ' audit-silent' : ''}`}>
+                              <div className="audit-left">
+                                <span className="audit-summary">{e.summary}</span>
+                              </div>
+                              <div className="audit-right">
+                                <DispChip disposition={e.disposition} />
+                                <span className="audit-age">{timeAgo(e.timestamp)}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {hasMore && !isExpanded && (
+                            <button className="link-btn audit-expand-btn" onClick={() => this.toggleGroup(groupKey)}>
+                              Show {hostEntries.length - PREVIEW_COUNT} more
+                            </button>
+                          )}
+                          {hasMore && isExpanded && (
+                            <button className="link-btn audit-expand-btn" onClick={() => this.toggleGroup(groupKey)}>
+                              Collapse
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {grouped[host].map(e => (
-                    <div key={e.id} className={`audit-row${e.silent ? ' audit-silent' : ''}`}>
-                      <div className="audit-left">
-                        <span className="audit-summary">{e.summary}</span>
-                      </div>
-                      <div className="audit-right">
-                        <DispChip disposition={e.disposition} />
-                        <span className="audit-age">{timeAgo(e.timestamp)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

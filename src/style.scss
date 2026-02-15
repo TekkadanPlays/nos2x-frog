@@ -1270,11 +1270,50 @@ input,
   gap: 1px;
 }
 
-// Audit group — entries grouped by host
+// Audit profile group — top-level grouping by npub
+.audit-profile-group {
+  &:not(:first-child) {
+    margin-top: 0.6em;
+    padding-top: 0.6em;
+    border-top: 1px solid $color-border;
+  }
+}
+
+.audit-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3em 0.6em;
+  margin-bottom: 0.3em;
+  background-color: rgba($color-primary, 0.06);
+  border-radius: $radius-sm;
+  border-left: 2px solid $color-primary;
+}
+
+.audit-profile-label {
+  font-weight: 700;
+  color: $color-text;
+  font-size: 0.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Audit group — entries grouped by host within a profile
 .audit-group {
   &:not(:first-child) {
     margin-top: 0.4em;
   }
+}
+
+.audit-expand-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.25em 0;
+  font-size: 0.72em;
+  color: $color-text-muted;
+  &:hover { color: $color-text; }
 }
 
 .audit-group-header {

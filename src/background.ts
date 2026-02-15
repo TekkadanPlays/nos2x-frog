@@ -393,6 +393,9 @@ async function handleContentScriptMessage({
 }: ContentMessageArgs): Promise<ContentScriptMessageResponse> {
   const summary = buildSummary(type, params);
   const auditExtra = buildAuditExtra(type, params);
+  // Attach active profile pubkey for per-npub audit grouping
+  const activePub = await Storage.getActivePublicKey();
+  if (activePub) auditExtra.profilePubKey = activePub;
 
   // Touch the site record (track first_seen, request_count, last_active)
   await Storage.touchSite(host);
@@ -443,6 +446,9 @@ async function processRequest({
 }: ContentMessageArgs): Promise<ContentScriptMessageResponse> {
   const summary = buildSummary(type, params);
   const auditExtra = buildAuditExtra(type, params);
+  // Attach active profile pubkey for per-npub audit grouping
+  const activePubProc = await Storage.getActivePublicKey();
+  if (activePubProc) auditExtra.profilePubKey = activePubProc;
   const capability = typeToCapability(type);
 
   if (!capability) {

@@ -229,6 +229,7 @@ export function buildAuditExtra(type: string, params: PromptParams | any): {
   eventKindName?: string;
   riskTier?: KindRiskTier;
   peer?: string;
+  profilePubKey?: string;
 } {
   const extra: any = {};
 
