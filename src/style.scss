@@ -109,9 +109,24 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-// Force all inline SVG icons to inherit color — Ionicons are stroke-based outlines
+// Force ALL inline SVG icons to render in the parent's text color.
+// Our Ionicons use stroke="currentColor" + fill="none" on most shapes,
+// but some shapes (e.g. <ellipse> in dice) have NO attrs and default
+// to fill:black. Two rules handle both cases:
+//   1. Elements with no fill attr → fill with currentColor
+//   2. Elements with fill="none" → keep transparent, use stroke
 svg {
   color: inherit;
+}
+
+// Catch-all: shapes without explicit fill get currentColor
+svg :not([fill]) {
+  fill: currentColor;
+}
+
+// Stroke-based outlines: preserve fill="none" and ensure stroke is visible.
+// CSS overrides presentation attrs, so we must re-declare both.
+svg [fill="none"] {
   fill: none;
   stroke: currentColor;
 }
@@ -998,8 +1013,8 @@ input,
   }
 
   &.nav-active {
-    color: $color-primary;
-    background-color: $color-primary-muted;
+    color: $color-text;
+    background-color: rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -1416,8 +1431,8 @@ button.opts-nav-item {
   }
 
   &.opts-nav-active {
-    color: $color-primary;
-    background-color: $color-primary-muted;
+    color: $color-text;
+    background-color: rgba(255, 255, 255, 0.08);
     font-weight: 600;
   }
 
@@ -1492,94 +1507,135 @@ button.opts-nav-item {
   margin: 0;
 }
 
-// Profile cards
-.profile-list {
+// Profile section — redesigned
+.prof-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.4em;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 1em;
+
+  .opts-section-title { margin-bottom: 0; }
+  .opts-section-desc { margin-bottom: 0; }
+}
+
+.prof-add-btn {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+  svg { width: 14px; height: 14px; }
+}
+
+// Horizontal pill selector
+.prof-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
   margin-bottom: 1em;
 }
 
-.profile-card {
-  display: flex;
+.prof-pill {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.7em 0.9em;
-  background-color: $color-bg-raised;
+  gap: 0.4em;
+  padding: 0.4em 0.8em;
   border: 1px solid $color-border;
-  border-radius: $radius-lg;
+  border-radius: $radius-pill;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: 0.8em;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color $transition-fast, background-color $transition-fast, box-shadow $transition-fast;
+  transition: all $transition-fast;
 
   &:hover {
-    background-color: $color-bg-hover;
     border-color: $color-border-emphasis;
+    color: $color-text;
+    background-color: rgba(255, 255, 255, 0.03);
   }
 
-  &.profile-card-active {
-    border-color: rgba($color-primary, 0.3);
-    background-color: rgba($color-primary, 0.04);
-    box-shadow: 0 0 0 1px rgba($color-primary, 0.08);
-    cursor: default;
+  &.prof-pill-active {
+    border-color: $color-border-emphasis;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: $color-text;
+    font-weight: 600;
   }
 }
 
-.profile-card-left {
-  display: flex;
-  align-items: center;
-  gap: 0.7em;
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-dot {
-  width: 8px;
-  height: 8px;
+.prof-pill-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: $color-text-dim;
   flex-shrink: 0;
-  transition: background-color $transition-fast, box-shadow $transition-fast;
 
-  &.profile-dot-active {
+  &.prof-pill-dot-active {
     background-color: $color-primary;
-    box-shadow: 0 0 6px rgba($color-primary, 0.4);
+    box-shadow: 0 0 5px rgba($color-primary, 0.5);
   }
 }
 
-.profile-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15em;
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-card-name {
-  font-size: 0.9em;
-  font-weight: 600;
-  color: $color-text;
+.prof-pill-name {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 120px;
 }
 
-.profile-card-name-input {
-  font-size: 0.9em;
+// Detail card
+.prof-detail-card {
+  margin-bottom: 1em;
+}
+
+.prof-detail-header {
+  margin-bottom: 0.8em;
+}
+
+.prof-detail-badge {
+  display: inline-block;
+  font-size: 0.68em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: $color-text;
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 0.2em 0.6em;
+  border-radius: $radius-sm;
+}
+
+.prof-detail-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 1em;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    color: $color-text-dim;
+    flex-shrink: 0;
+  }
+}
+
+.prof-detail-name {
+  flex: 1;
+  font-size: 1.15em;
   font-weight: 600;
   color: $color-text;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba($color-primary, 0.3);
+  border-bottom: 1px solid transparent;
   border-radius: 0;
-  padding: 0.1em 0;
-  margin: 0;
-  width: 100%;
+  padding: 0.15em 0;
   font-family: $font-family;
   outline: none;
   transition: border-color $transition-fast;
 
+  &:hover {
+    border-bottom-color: $color-border;
+  }
+
   &:focus {
-    border-bottom-color: $color-primary;
+    border-bottom-color: $color-text-muted;
     box-shadow: none;
   }
 
@@ -1590,64 +1646,58 @@ button.opts-nav-item {
   }
 }
 
-.profile-card-npub {
-  font-size: 0.72em;
-  font-family: $font-family-mono;
+.prof-detail-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5em 0;
+  border-bottom: 1px solid $color-border;
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+}
+
+.prof-detail-label {
+  font-size: 0.75em;
+  font-weight: 600;
   color: $color-text-dim;
-  background: none;
-  padding: 0;
-  border-radius: 0;
-}
-
-.profile-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.2em;
-  flex-shrink: 0;
-}
-
-// New profile card
-.profile-new-card {
-  border-color: rgba($color-primary, 0.2);
-  margin-bottom: 1em;
-}
-
-.profile-new-badge {
-  display: inline-block;
-  font-size: 0.68em;
-  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: $color-primary;
-  background-color: rgba($color-primary, 0.1);
-  padding: 0.2em 0.6em;
-  border-radius: $radius-sm;
-  margin-bottom: 0.3em;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  min-width: 6em;
 }
 
-// Add profile button
-.profile-add-btn {
+.prof-detail-value {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.4em;
-  width: 100%;
-  padding: 0.7em;
-  border: 1px dashed $color-border-emphasis;
-  border-radius: $radius-md;
-  background: none;
-  color: $color-text-muted;
-  font-size: 0.85em;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color $transition-fast, border-color $transition-fast, background-color $transition-fast;
+  gap: 0.3em;
+  min-width: 0;
 
-  svg { width: 16px; height: 16px; }
+  code {
+    font-size: 0.82em;
+    color: $color-text-muted;
+    background: none;
+    padding: 0;
+  }
+}
+
+.prof-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  margin-top: 0.4em;
+}
+
+.button-danger-outline {
+  border-color: rgba($color-danger, 0.25);
+  color: $color-danger-light;
 
   &:hover {
-    color: $color-primary;
-    border-color: rgba($color-primary, 0.3);
-    background-color: rgba($color-primary, 0.04);
+    background-color: rgba($color-danger, 0.06);
+    border-color: rgba($color-danger, 0.4);
+    color: $color-danger;
   }
 }
 

@@ -586,69 +586,52 @@ class Options extends Component<{}, OptionsState> {
 
   renderProfilesSection() {
     const { selectedProfilePubKey, profiles, profileName, privateKey, isKeyHidden } = this.state;
-    const profileKeys = Object.keys(profiles);
+    const profileKeys = Object.keys(profiles).filter(pk => pk !== '');
     const isNewPending = this.isNewProfilePending();
     const isExisting = selectedProfilePubKey !== '';
+    const selectedNpub = isExisting ? nip19.npubEncode(selectedProfilePubKey) : '';
 
     return (
       <div className="opts-section">
-        <h2 className="opts-section-title">Profiles</h2>
-        <p className="opts-section-desc">Your signing identities. Each profile has its own key, relays, and permissions.</p>
-
-        {/* Profile list */}
-        <div className="profile-list">
-          {profileKeys.filter(pk => pk !== '').map(pk => {
-            const p = profiles[pk];
-            const isActive = pk === selectedProfilePubKey;
-            const npub = nip19.npubEncode(pk);
-            return (
-              <div
-                key={pk}
-                className={`profile-card${isActive ? ' profile-card-active' : ''}`}
-                onClick={() => { if (!isActive) { this.setState({ selectedProfilePubKey: pk }); this.loadAndSelectProfile(pk); } }}
-              >
-                <div className="profile-card-left">
-                  <span className={`profile-dot${isActive ? ' profile-dot-active' : ''}`} />
-                  <div className="profile-card-info">
-                    {isActive ? (
-                      <input
-                        className="profile-card-name-input"
-                        type="text"
-                        value={profileName ?? ''}
-                        placeholder="Profile name"
-                        onInput={this.handleProfileNameChange}
-                        onBlur={this.handleProfileNameBlur}
-                        onKeyDown={this.handleProfileNameKeyDown}
-                        onClick={(e: any) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="profile-card-name">{p.name || 'Unnamed'}</span>
-                    )}
-                    <code className="profile-card-npub">{truncatePublicKeys(npub, 12, 8)}</code>
-                  </div>
-                </div>
-                <div className="profile-card-actions">
-                  {isActive && (
-                    <>
-                      <button className="button-onlyicon" onClick={this.handleExportProfileClick} title="Export">
-                        <DownloadIcon />
-                      </button>
-                      <button className="button-onlyicon icon-btn-danger" onClick={this.handleDeleteProfileClick} title="Delete">
-                        <TrashIcon />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="prof-header">
+          <div>
+            <h2 className="opts-section-title">Profiles</h2>
+            <p className="opts-section-desc">Signing identities. Each profile has its own key, relays, and permissions.</p>
+          </div>
+          {!isNewPending && (
+            <button className="prof-add-btn" onClick={this.handleNewProfileClick}>
+              <AddCircleIcon /> New
+            </button>
+          )}
         </div>
 
-        {/* New profile flow */}
-        {isNewPending ? (
-          <div className="card profile-new-card">
+        {/* Profile selector — compact horizontal pills */}
+        {profileKeys.length > 0 && (
+          <div className="prof-selector">
+            {profileKeys.map(pk => {
+              const p = profiles[pk];
+              const active = pk === selectedProfilePubKey;
+              return (
+                <button
+                  key={pk}
+                  className={`prof-pill${active ? ' prof-pill-active' : ''}`}
+                  onClick={() => { if (!active) { this.setState({ selectedProfilePubKey: pk }); this.loadAndSelectProfile(pk); } }}
+                >
+                  <span className={`prof-pill-dot${active ? ' prof-pill-dot-active' : ''}`} />
+                  <span className="prof-pill-name">{p.name || 'Unnamed'}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* New profile creation flow */}
+        {isNewPending && (
+          <div className="card prof-detail-card">
             <div className="card-body">
-              <span className="profile-new-badge">New Profile</span>
+              <div className="prof-detail-header">
+                <span className="prof-detail-badge">New Profile</span>
+              </div>
               <div className="form-control">
                 <span className="form-label">Private key</span>
                 <div className="input-group">
@@ -665,44 +648,83 @@ class Options extends Component<{}, OptionsState> {
                 </div>
                 <span className="form-hint">Paste an existing key or generate a new one.</span>
               </div>
-              <div className="opts-toolbar">
+              <div className="prof-detail-actions">
                 <button onClick={this.generateRandomPrivateKey}>
                   <DiceIcon /> Generate
                 </button>
                 <button onClick={this.handleImportProfileClick}>
-                  <ArrowUpCircleIcon /> Import JSON
+                  <ArrowUpCircleIcon /> Import
                 </button>
                 <span className="opts-toolbar-spacer" />
                 <button className="button-primary" disabled={!this.isKeyValid()} onClick={this.savePrivateKey}>
-                  Save Profile
+                  Save
                 </button>
               </div>
             </div>
           </div>
-        ) : (
-          <button className="profile-add-btn" onClick={this.handleNewProfileClick}>
-            <AddCircleIcon /> Add new profile
-          </button>
         )}
 
-        {/* Active profile key display (existing profiles) */}
-        {isExisting && (
-          <div className="card mt-4">
+        {/* Selected profile detail card */}
+        {isExisting && !isNewPending && (
+          <div className="card prof-detail-card">
             <div className="card-body">
-              <div className="form-control">
-                <span className="form-label">Private key</span>
-                <div className="input-group">
-                  <input
-                    id="private-key"
-                    type={isKeyHidden ? 'password' : 'text'}
-                    value={privateKey}
-                    readOnly
-                  />
-                  <button onClick={this.handlePrivateKeyShowClick} title={isKeyHidden ? 'Show' : 'Hide'}>
+              {/* Editable name */}
+              <div className="prof-detail-name-row">
+                <input
+                  className="prof-detail-name"
+                  type="text"
+                  value={profileName ?? ''}
+                  placeholder="Click to name this profile..."
+                  onInput={this.handleProfileNameChange}
+                  onBlur={this.handleProfileNameBlur}
+                  onKeyDown={this.handleProfileNameKeyDown}
+                />
+                <PencilIcon />
+              </div>
+
+              {/* Public key */}
+              <div className="prof-detail-field">
+                <span className="prof-detail-label">Public key</span>
+                <div className="prof-detail-value">
+                  <code>{truncatePublicKeys(selectedNpub, 16, 12)}</code>
+                  <button className="button-onlyicon" onClick={() => { navigator.clipboard.writeText(selectedNpub); this.showMessage('Copied npub!', 'success'); }} title="Copy npub">
+                    <CopyIcon />
+                  </button>
+                </div>
+              </div>
+
+              {/* Private key */}
+              <div className="prof-detail-field">
+                <span className="prof-detail-label">Private key</span>
+                <div className="prof-detail-value">
+                  <code>{isKeyHidden ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : truncatePublicKeys(privateKey, 16, 12)}</code>
+                  <button className="button-onlyicon" onClick={this.handlePrivateKeyShowClick} title={isKeyHidden ? 'Show' : 'Hide'}>
                     {isKeyHidden ? <EyeIcon /> : <EyeOffIcon />}
                   </button>
                 </div>
               </div>
+
+              <hr className="separator" />
+
+              {/* Actions */}
+              <div className="prof-detail-actions">
+                <button onClick={this.handleExportProfileClick}>
+                  <DownloadIcon /> Export
+                </button>
+                <span className="opts-toolbar-spacer" />
+                <button className="button-danger-outline" onClick={this.handleDeleteProfileClick}>
+                  <TrashIcon /> Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {profileKeys.length === 0 && !isNewPending && (
+          <div className="card">
+            <div className="card-body">
+              <p className="opts-empty">No profiles yet. Create one to get started.</p>
             </div>
           </div>
         )}
