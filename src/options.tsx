@@ -744,12 +744,12 @@ class Options extends Component<{}, OptionsState> {
             <div className="switch-row">
               <div className="switch-label">
                 <strong>PIN Protection</strong>
-                <span>Encrypt all private keys with a PIN. Required each session.</span>
+                <span>Encrypt all private keys with a PIN. You'll be asked to enter it once per session.</span>
               </div>
               <input type="checkbox" className="toggle" checked={pinEnabled} onChange={this.handleProtectWithPinClick} />
             </div>
             {pinEnabled && (
-              <div className="form-control">
+              <div className="form-control switch-sub-control">
                 <span className="form-label">Cache duration</span>
                 <select id="pin-cache-duration" value={pinCacheDuration} onChange={this.handlePinCacheDurationChange}>
                   <option value={10 * 1000}>10 seconds</option>
@@ -757,15 +757,18 @@ class Options extends Component<{}, OptionsState> {
                   <option value={5 * 60 * 1000}>5 minutes</option>
                   <option value={10 * 60 * 1000}>10 minutes</option>
                 </select>
+                <span className="form-hint">How long the PIN is remembered after entry.</span>
               </div>
             )}
+          </div>
+        </div>
 
-            <hr className="separator" />
-
+        <div className="card">
+          <div className="card-body">
             <div className="switch-row">
               <div className="switch-label">
                 <strong>NIP-42 Auto-Sign</strong>
-                <span>Auto-sign relay AUTH challenges. Cannot post or spend on your behalf.</span>
+                <span>Automatically sign relay AUTH challenges. This only proves your identity to relays — it cannot post or spend on your behalf.</span>
               </div>
               <input type="checkbox" className="toggle" checked={nip42AutoSign} onChange={this.handleNip42AutoSignToggle} />
             </div>
@@ -780,27 +783,26 @@ class Options extends Component<{}, OptionsState> {
     return (
       <div className="opts-section">
         <h2 className="opts-section-title">Relays</h2>
-        <p className="opts-section-desc">Preferred relays for this profile. Clients may request these.</p>
+        <p className="opts-section-desc">Preferred relays for this profile. Clients may request these via NIP-07.</p>
 
-        <div className="card">
-          <div className="card-body">
-            {relays.length === 0 ? (
-              <p className="opts-empty">No relays configured yet.</p>
-            ) : (
+        {relays.length > 0 && (
+          <div className="card">
+            <div className="card-body">
               <div className="relays-list">
                 {relays.map(({ url, policy }, i) => (
                   <div key={i} className="relay-row">
                     <div className="relay-url">
+                      <RadioIcon />
                       <input value={url} onInput={this.handleChangeRelayURL.bind(this, i)} />
                     </div>
                     <div className="relay-controls">
                       <label className="relay-toggle">
                         <input type="checkbox" className="toggle" checked={policy.read} onChange={this.handleToggleRelayPolicy.bind(this, i, 'read')} />
-                        <span>Read</span>
+                        <span>R</span>
                       </label>
                       <label className="relay-toggle">
                         <input type="checkbox" className="toggle" checked={policy.write} onChange={this.handleToggleRelayPolicy.bind(this, i, 'write')} />
-                        <span>Write</span>
+                        <span>W</span>
                       </label>
                       <button className="button-onlyicon icon-btn-danger" onClick={this.handleRemoveRelayClick} title="Remove relay" id={url}>
                         <TrashIcon />
@@ -809,16 +811,21 @@ class Options extends Component<{}, OptionsState> {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        <div className="card">
+          <div className="card-body">
+            {relays.length === 0 && (
+              <p className="opts-empty">No relays configured. Add one below.</p>
             )}
-
-            <hr className="separator" />
-
             <div className="form-control">
               <span className="form-label">Add relay</span>
               <div className="input-group">
                 <input
                   id="new-relay-url"
-                  placeholder="wss://..."
+                  placeholder="wss://relay.example.com"
                   value={newRelayURL}
                   onInput={this.handleNewRelayURLChange}
                   className={!isNewRelayURLValid ? 'input-error' : ''}
@@ -841,12 +848,12 @@ class Options extends Component<{}, OptionsState> {
     return (
       <div className="opts-section">
         <h2 className="opts-section-title">Site Permissions</h2>
-        <p className="opts-section-desc">Sites that have requested signing access.</p>
+        <p className="opts-section-desc">Sites that have requested signing access. Revoke individual grants or clear all permissions for a site.</p>
 
         {sites.length === 0 ? (
           <div className="card">
             <div className="card-body">
-              <p className="opts-empty">No sites have requested access yet.</p>
+              <p className="opts-empty">No sites have requested access yet. Visit a Nostr app to get started.</p>
             </div>
           </div>
         ) : (
@@ -854,37 +861,34 @@ class Options extends Component<{}, OptionsState> {
             {sites.map((site: SitePermission) => {
               const activeGrants = site.grants.filter(g => g.expires_at === null || g.expires_at > now);
               return (
-                <div key={site.host} className="card card-compact">
+                <div key={site.host} className="card">
                   <div className="card-body">
                     <div className="site-perm-header">
                       <strong>{site.host}</strong>
-                      <span className="site-perm-meta">{site.request_count} req · {site.denied_count} denied</span>
+                      <div className="site-perm-stats">
+                        <span className="site-perm-stat">{site.request_count} requests</span>
+                        {site.denied_count > 0 && <span className="site-perm-stat site-perm-stat-warn">{site.denied_count} denied</span>}
+                      </div>
                       <button className="button-onlyicon icon-btn-danger" onClick={() => this.handleRevokeAllGrants(site.host)} title="Revoke all">
                         <TrashIcon />
                       </button>
                     </div>
                     {activeGrants.length > 0 ? (
-                      <table className="site-grants-table">
-                        <thead>
-                          <tr><th>Capability</th><th>Duration</th><th>Granted</th><th></th></tr>
-                        </thead>
-                        <tbody>
-                          {activeGrants.map(grant => (
-                            <tr key={grant.capability}>
-                              <td>{CAPABILITY_INFO[grant.capability]?.label || grant.capability}</td>
-                              <td>{grant.duration}</td>
-                              <td className="help-cursor" title={format(new Date(grant.granted_at * 1000), 'yyyy-MM-dd HH:mm:ss')}>
-                                {formatDistance(new Date(grant.granted_at * 1000), new Date(), { addSuffix: true })}
-                              </td>
-                              <td>
-                                <button className="link-btn link-btn-danger" onClick={() => this.handleRevokeGrant(site.host, grant.capability)}>
-                                  Revoke
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="site-grants">
+                        {activeGrants.map(grant => (
+                          <div key={grant.capability} className="site-grant-row">
+                            <div className="site-grant-info">
+                              <span className="site-grant-cap">{CAPABILITY_INFO[grant.capability]?.label || grant.capability}</span>
+                              <span className="site-grant-meta">
+                                {grant.duration} · {formatDistance(new Date(grant.granted_at * 1000), new Date(), { addSuffix: true })}
+                              </span>
+                            </div>
+                            <button className="link-btn link-btn-danger" onClick={() => this.handleRevokeGrant(site.host, grant.capability)}>
+                              Revoke
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <p className="site-perm-empty">No active grants</p>
                     )}
@@ -902,14 +906,17 @@ class Options extends Component<{}, OptionsState> {
     return (
       <div className="opts-section">
         <h2 className="opts-section-title opts-section-title-danger">Danger Zone</h2>
-        <p className="opts-section-desc">Irreversible actions.</p>
+        <p className="opts-section-desc">Irreversible actions. Proceed with caution.</p>
 
         <div className="card card-danger-outline">
           <div className="card-body">
-            <p className="card-description">Permanently delete all profiles, keys, permissions, and settings from this browser.</p>
-            <div className="opts-toolbar">
+            <div className="danger-row">
+              <div className="danger-info">
+                <strong>Delete all data</strong>
+                <span>Permanently remove all profiles, private keys, relay lists, site permissions, and settings from this browser. This cannot be undone.</span>
+              </div>
               <button className="button-danger" onClick={this.handleClearStorageClick}>
-                <TrashIcon /> Delete all data
+                <TrashIcon /> Delete
               </button>
             </div>
           </div>

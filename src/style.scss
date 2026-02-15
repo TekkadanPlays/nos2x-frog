@@ -542,8 +542,16 @@ button,
     span {
       font-size: 0.78em;
       color: $color-text-dim;
+      line-height: 1.45;
     }
   }
+}
+
+// Sub-control indented under a switch (e.g. cache duration under PIN toggle)
+.switch-sub-control {
+  margin-left: 0;
+  padding-top: 0.4em;
+  border-top: 1px solid $color-border;
 }
 
 // Toggle track (checkbox-based)
@@ -1781,7 +1789,7 @@ button.opts-nav-item {
   display: flex;
   align-items: center;
   gap: 0.6em;
-  margin-bottom: 0.4em;
+  margin-bottom: 0.5em;
 
   strong {
     color: $color-text;
@@ -1789,10 +1797,21 @@ button.opts-nav-item {
   }
 }
 
-.site-perm-meta {
-  font-size: 0.72em;
-  color: $color-text-dim;
+.site-perm-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
   flex: 1;
+}
+
+.site-perm-stat {
+  font-size: 0.7em;
+  color: $color-text-dim;
+  font-weight: 500;
+
+  &.site-perm-stat-warn {
+    color: $color-warning-light;
+  }
 }
 
 .site-perm-empty {
@@ -1802,24 +1821,64 @@ button.opts-nav-item {
   margin: 0;
 }
 
-.site-grants-table {
-  width: 100%;
-  font-size: 0.85em;
+// Grant rows — replaces old table layout
+.site-grants {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
-  th {
-    font-size: 0.7em;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: $color-text-dim;
-    font-weight: 600;
-    padding: 0.35em 0.5em;
-    text-align: left;
+.site-grant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45em 0;
+  border-top: 1px solid $color-border;
+
+  &:first-child { border-top: none; }
+}
+
+.site-grant-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  min-width: 0;
+}
+
+.site-grant-cap {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: $color-text;
+}
+
+.site-grant-meta {
+  font-size: 0.72em;
+  color: $color-text-dim;
+}
+
+// Danger zone row
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5em;
+}
+
+.danger-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  flex: 1;
+
+  strong {
+    font-size: 0.9em;
+    color: $color-text;
   }
 
-  td {
-    padding: 0.35em 0.5em;
-    color: $color-text;
-    border-top: 1px solid $color-border;
+  span {
+    font-size: 0.78em;
+    color: $color-text-dim;
+    line-height: 1.45;
   }
 }
 
