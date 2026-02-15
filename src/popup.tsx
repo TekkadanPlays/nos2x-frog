@@ -13,7 +13,6 @@ import {
 import * as Storage from './storage';
 import { truncatePublicKeys } from './common';
 
-import logotype from './assets/logo/logotype.png';
 import CopyIcon from './assets/icons/copy-outline.svg';
 import CogIcon from './assets/icons/cog-outline.svg';
 import TrashIcon from './assets/icons/trash-outline.svg';
@@ -331,7 +330,10 @@ class Popup extends Component<{}, PopupState> {
     return (
       <div className="popup-shell">
         <header className="popup-header">
-          <img src={logotype} alt="Ribbit Signer" className="popup-logo" />
+          <div className="popup-logo-text">
+            <span className="popup-logo-icon">{'\u{1F438}'}</span>
+            <span className="popup-logo-name">nos2x-frog</span>
+          </div>
           <button className="popup-header-settings" onClick={this.openOptions} title="Settings">
             <CogIcon />
           </button>

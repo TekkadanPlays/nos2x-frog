@@ -939,10 +939,22 @@ input,
   border-bottom: 1px solid $color-border;
 }
 
-.popup-logo {
-  height: 20px;
-  filter: brightness(0) invert(1);
-  opacity: 0.85;
+.popup-logo-text {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+.popup-logo-icon {
+  font-size: 1.25em;
+  line-height: 1;
+}
+
+.popup-logo-name {
+  font-size: 0.92em;
+  font-weight: 700;
+  color: $color-text;
+  letter-spacing: -0.02em;
 }
 
 .popup-header-settings {
@@ -1350,13 +1362,23 @@ input,
 }
 
 .opts-sidebar-logo {
-  padding: 1.4em 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 1.2em 1.2em;
   border-bottom: 1px solid $color-border;
-  img {
-    height: 22px;
-    filter: brightness(0) invert(1);
-    opacity: 0.85;
-  }
+}
+
+.opts-logo-icon {
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+.opts-logo-name {
+  font-size: 1em;
+  font-weight: 700;
+  color: $color-text;
+  letter-spacing: -0.02em;
 }
 
 .opts-nav {
@@ -1481,28 +1503,45 @@ button.opts-nav-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.65em 0.9em;
+  padding: 0.7em 0.9em;
   background-color: $color-bg-raised;
   border: 1px solid $color-border;
-  border-left: 3px solid transparent;
-  border-radius: $radius-md;
+  border-radius: $radius-lg;
   cursor: pointer;
-  transition: border-color $transition-fast, background-color $transition-fast;
+  transition: border-color $transition-fast, background-color $transition-fast, box-shadow $transition-fast;
 
   &:hover {
     background-color: $color-bg-hover;
     border-color: $color-border-emphasis;
-    border-left-color: $color-border-emphasis;
   }
 
   &.profile-card-active {
-    border-left-color: $color-primary;
+    border-color: rgba($color-primary, 0.3);
     background-color: rgba($color-primary, 0.04);
+    box-shadow: 0 0 0 1px rgba($color-primary, 0.08);
     cursor: default;
+  }
+}
 
-    &:hover {
-      border-left-color: $color-primary;
-    }
+.profile-card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: $color-text-dim;
+  flex-shrink: 0;
+  transition: background-color $transition-fast, box-shadow $transition-fast;
+
+  &.profile-dot-active {
+    background-color: $color-primary;
+    box-shadow: 0 0 6px rgba($color-primary, 0.4);
   }
 }
 
@@ -1511,6 +1550,7 @@ button.opts-nav-item {
   flex-direction: column;
   gap: 0.15em;
   min-width: 0;
+  flex: 1;
 }
 
 .profile-card-name {
@@ -1520,6 +1560,33 @@ button.opts-nav-item {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profile-card-name-input {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: $color-text;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba($color-primary, 0.3);
+  border-radius: 0;
+  padding: 0.1em 0;
+  margin: 0;
+  width: 100%;
+  font-family: $font-family;
+  outline: none;
+  transition: border-color $transition-fast;
+
+  &:focus {
+    border-bottom-color: $color-primary;
+    box-shadow: none;
+  }
+
+  &::placeholder {
+    color: $color-text-dim;
+    font-weight: 400;
+    font-style: italic;
+  }
 }
 
 .profile-card-npub {

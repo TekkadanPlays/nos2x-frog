@@ -28,7 +28,6 @@ import {
   formatPrivateKeyForDisplay,
   validatePrivateKeyFormat
 } from './common';
-import logotype from './assets/logo/logotype.png';
 import AddCircleIcon from './assets/icons/add-circle-outline.svg';
 import ArrowUpCircleIcon from './assets/icons/arrow-up-circle-outline.svg';
 import CopyIcon from './assets/icons/copy-outline.svg';
@@ -65,7 +64,6 @@ interface OptionsState {
   profileName: string | undefined;
   profileExportJson: string;
   profileImportJson: string;
-  isRenameModalShown: boolean;
   isExportModalShown: boolean;
   isImportModalShown: boolean;
   privateKey: string;
@@ -91,7 +89,6 @@ class Options extends Component<{}, OptionsState> {
     profileName: undefined,
     profileExportJson: '',
     profileImportJson: '',
-    isRenameModalShown: false,
     isExportModalShown: false,
     isImportModalShown: false,
     privateKey: '',
@@ -194,28 +191,30 @@ class Options extends Component<{}, OptionsState> {
     return selectedProfilePubKey ? profiles[selectedProfilePubKey] : null;
   };
 
-  handleProfileRenameClick = () => {
-    const profile = this.getSelectedProfile();
-    if (profile) {
-      this.setState({ profileName: profile.name, isRenameModalShown: true });
-    }
-  };
-
   handleProfileNameChange = (e: any) => {
     this.setState({ profileName: e.target.value });
   };
 
-  handleProfileRenameConfirm = async () => {
+  handleProfileNameBlur = async () => {
     const profile = this.getSelectedProfile();
     const { profileName, selectedProfilePubKey } = this.state;
     if (profile && profileName != profile.name) {
       profile.name = profileName?.trim() != '' ? profileName : undefined;
       await Storage.updateProfile(profile, selectedProfilePubKey);
+      const profiles = { ...this.state.profiles };
+      profiles[selectedProfilePubKey] = { ...profile };
+      this.setState({ profiles });
     }
-    this.setState({ isRenameModalShown: false });
   };
 
-  handleProfileRenameModalClose = () => { this.setState({ isRenameModalShown: false }); };
+  handleProfileNameKeyDown = (e: any) => {
+    if (e.key === 'Enter') { e.target.blur(); }
+    if (e.key === 'Escape') {
+      const profile = this.getSelectedProfile();
+      this.setState({ profileName: profile?.name });
+      e.target.blur();
+    }
+  };
 
   handleExportProfileClick = () => {
     const profile = this.getSelectedProfile();
@@ -555,7 +554,8 @@ class Options extends Component<{}, OptionsState> {
     return (
       <aside className="opts-sidebar">
         <div className="opts-sidebar-logo">
-          <img src={logotype} alt="Ribbit Signer" />
+          <span className="opts-logo-icon">{'\u{1F438}'}</span>
+          <span className="opts-logo-name">nos2x-frog</span>
         </div>
         <nav className="opts-nav">
           {items.map(it => (
@@ -585,7 +585,7 @@ class Options extends Component<{}, OptionsState> {
   }
 
   renderProfilesSection() {
-    const { selectedProfilePubKey, profiles, privateKey, isKeyHidden } = this.state;
+    const { selectedProfilePubKey, profiles, profileName, privateKey, isKeyHidden } = this.state;
     const profileKeys = Object.keys(profiles);
     const isNewPending = this.isNewProfilePending();
     const isExisting = selectedProfilePubKey !== '';
@@ -607,16 +607,29 @@ class Options extends Component<{}, OptionsState> {
                 className={`profile-card${isActive ? ' profile-card-active' : ''}`}
                 onClick={() => { if (!isActive) { this.setState({ selectedProfilePubKey: pk }); this.loadAndSelectProfile(pk); } }}
               >
-                <div className="profile-card-info">
-                  <span className="profile-card-name">{p.name || 'Unnamed'}</span>
-                  <code className="profile-card-npub">{truncatePublicKeys(npub, 12, 8)}</code>
+                <div className="profile-card-left">
+                  <span className={`profile-dot${isActive ? ' profile-dot-active' : ''}`} />
+                  <div className="profile-card-info">
+                    {isActive ? (
+                      <input
+                        className="profile-card-name-input"
+                        type="text"
+                        value={profileName ?? ''}
+                        placeholder="Profile name"
+                        onInput={this.handleProfileNameChange}
+                        onBlur={this.handleProfileNameBlur}
+                        onKeyDown={this.handleProfileNameKeyDown}
+                        onClick={(e: any) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="profile-card-name">{p.name || 'Unnamed'}</span>
+                    )}
+                    <code className="profile-card-npub">{truncatePublicKeys(npub, 12, 8)}</code>
+                  </div>
                 </div>
                 <div className="profile-card-actions">
                   {isActive && (
                     <>
-                      <button className="button-onlyicon" onClick={this.handleProfileRenameClick} title="Rename">
-                        <PencilIcon />
-                      </button>
                       <button className="button-onlyicon" onClick={this.handleExportProfileClick} title="Export">
                         <DownloadIcon />
                       </button>
@@ -674,7 +687,7 @@ class Options extends Component<{}, OptionsState> {
 
         {/* Active profile key display (existing profiles) */}
         {isExisting && (
-          <div className="card">
+          <div className="card mt-4">
             <div className="card-body">
               <div className="form-control">
                 <span className="form-label">Private key</span>
@@ -885,8 +898,8 @@ class Options extends Component<{}, OptionsState> {
 
   render() {
     const {
-      profileName, profileExportJson, profileImportJson,
-      isRenameModalShown, isExportModalShown, isImportModalShown,
+      profileExportJson, profileImportJson,
+      isExportModalShown, isImportModalShown,
       message, messageType,
     } = this.state;
 
@@ -899,14 +912,6 @@ class Options extends Component<{}, OptionsState> {
             {this.renderContent()}
           </div>
         </div>
-
-        <Modal show={isRenameModalShown} className="rename-modal" onClose={this.handleProfileRenameModalClose}>
-          <div className="form-control">
-            <span className="form-label">Profile name</span>
-            <input id="profile-name" type="text" value={profileName ?? ''} onInput={this.handleProfileNameChange} />
-          </div>
-          <button onClick={this.handleProfileRenameConfirm}>Save</button>
-        </Modal>
 
         <Modal show={isExportModalShown} className="export-modal" onClose={this.handleExportModalClose}>
           <p>Profile JSON (contains your private key):</p>
