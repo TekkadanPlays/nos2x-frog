@@ -187,7 +187,7 @@ export type AuditDisposition =
   | 'approved'       // user or auto-policy approved
   | 'rejected'       // user explicitly rejected
   | 'auto-approved'  // approved by existing grant (no prompt)
-  | 'auto-signed'    // NIP-42 auto-sign
+  | 'relay-auth'     // auto-approved relay auth (per-relay grant)
   | 'rate-limited'   // anti-spam blocked
   | 'cooldown'       // post-rejection cooldown
   | 'queue-full'     // too many pending prompts
@@ -236,7 +236,8 @@ export enum ConfigurationKeys {
   ENCRYPTED_PRIVATE_KEY = 'encrypted_private_key',
   ACTIVE_PUBLIC_KEY = 'active_public_key',
   PIN_CACHE_DURATION = 'pin_cache_duration',
-  NIP42_AUTO_SIGN = 'nip42_auto_sign',
+  SESSION_TOKENS = 'session_tokens',
+  RELAY_AUTH_GRANTS = 'relay_auth_grants',
   SITE_PERMISSIONS = 'site_permissions',
   AUDIT_LOG = 'audit_log',
   SECURITY_PREFERENCES = 'security_preferences',
@@ -254,8 +255,6 @@ export type SecurityPreferences = {
   showEventPreview: boolean;
   /** Maximum audit log entries to retain */
   maxAuditLogEntries: number;
-  /** Auto-sign NIP-42 relay auth challenges */
-  nip42AutoSign: boolean;
   /** Default permission duration for new grants */
   defaultDuration: PermissionDuration;
 };
@@ -264,7 +263,6 @@ export const DEFAULT_SECURITY_PREFERENCES: SecurityPreferences = {
   alwaysPromptCritical: true,
   showEventPreview: true,
   maxAuditLogEntries: 500,
-  nip42AutoSign: false,
   defaultDuration: PermissionDuration.ONCE,
 };
 
@@ -398,3 +396,41 @@ export type PinMessageResponse = {
 };
 
 //#endregion PIN Types -------------------------------------------------------
+
+//#region Session Token Types -----------------------------------------------
+
+/** A cached session token for a relay */
+export type SessionTokenEntry = {
+  /** The relay WebSocket URL (e.g. "wss://relay.example.com") */
+  relayUrl: string;
+  /** The hex-encoded session token */
+  token: string;
+  /** When this token expires (unix seconds) */
+  expiresAt: number;
+  /** The pubkey this token authenticates as (hex) */
+  pubkey: string;
+};
+
+/** Map of relay URL -> SessionTokenEntry */
+export type SessionTokenStore = {
+  [relayUrl: string]: SessionTokenEntry;
+};
+
+/** A per-relay auth grant — allows auto-signing kind:22242 for trusted relays */
+export type RelayAuthGrant = {
+  /** The relay URL pattern (e.g. "wss://relay.example.com") */
+  relayUrl: string;
+  /** When this grant was created (unix seconds) */
+  grantedAt: number;
+  /** When this grant expires (unix seconds), or null for forever */
+  expiresAt: number | null;
+  /** Duration setting that was chosen */
+  duration: PermissionDuration;
+};
+
+/** Map of relay URL -> RelayAuthGrant */
+export type RelayAuthGrants = {
+  [relayUrl: string]: RelayAuthGrant;
+};
+
+//#endregion Session Token Types --------------------------------------------

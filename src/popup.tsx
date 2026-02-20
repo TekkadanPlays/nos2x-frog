@@ -28,7 +28,7 @@ const DISPOSITION_STYLE: Record<string, { label: string; cls: string }> = {
   'cooldown':      { label: 'Cooldown',      cls: 'disp-blocked' },
   'queue-full':    { label: 'Queue Full',    cls: 'disp-blocked' },
   'deduped':       { label: 'Dedup',         cls: 'disp-muted' },
-  'auto-signed':   { label: 'Auto-signed',   cls: 'disp-auto' },
+  'relay-auth':    { label: 'Relay Auth',     cls: 'disp-auto' },
   'error':         { label: 'Error',         cls: 'disp-error' },
 };
 

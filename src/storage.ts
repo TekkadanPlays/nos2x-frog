@@ -14,6 +14,10 @@ import {
   type SitePermission,
   type SitePermissions,
   type SecurityPreferences,
+  type SessionTokenEntry,
+  type SessionTokenStore,
+  type RelayAuthGrant,
+  type RelayAuthGrants,
   PermissionDuration,
   DEFAULT_SECURITY_PREFERENCES,
 } from './types';
@@ -92,29 +96,183 @@ export async function setPinCacheDuration(durationMs: number): Promise<void> {
   });
 }
 
-//#region NIP-42 Auto-Sign >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+//#region Session Token Storage >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 /**
- * Checks if NIP-42 AUTH auto-signing is enabled.
- * When enabled, kind 22242 (Client Authentication) events are signed
- * automatically without prompting, enabling seamless relay authentication
- * at scale (hundreds/thousands of relays).
+ * Read all stored session tokens.
  */
-export async function isNip42AutoSignEnabled(): Promise<boolean> {
-  const data = await browser.storage.local.get(ConfigurationKeys.NIP42_AUTO_SIGN);
-  return (data[ConfigurationKeys.NIP42_AUTO_SIGN] as boolean) ?? false;
+export async function readSessionTokens(): Promise<SessionTokenStore> {
+  const data = await browser.storage.local.get(ConfigurationKeys.SESSION_TOKENS);
+  return (data[ConfigurationKeys.SESSION_TOKENS] as SessionTokenStore) ?? {};
 }
 
 /**
- * Sets NIP-42 AUTH auto-signing enabled/disabled
+ * Get a session token for a specific relay URL.
+ * Returns null if no token exists or the token is expired.
  */
-export async function setNip42AutoSign(enabled: boolean): Promise<void> {
-  await browser.storage.local.set({
-    [ConfigurationKeys.NIP42_AUTO_SIGN]: enabled
-  });
+export async function getSessionToken(relayUrl: string): Promise<SessionTokenEntry | null> {
+  const tokens = await readSessionTokens();
+  const entry = tokens[relayUrl];
+  if (!entry) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (entry.expiresAt <= now) {
+    // Expired — clean it up
+    delete tokens[relayUrl];
+    await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
+    return null;
+  }
+
+  return entry;
 }
 
-//#endregion NIP-42 Auto-Sign <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+/**
+ * Store a session token for a relay.
+ */
+export async function setSessionToken(entry: SessionTokenEntry): Promise<void> {
+  const tokens = await readSessionTokens();
+  tokens[entry.relayUrl] = entry;
+  await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
+}
+
+/**
+ * Remove a session token for a relay.
+ */
+export async function removeSessionToken(relayUrl: string): Promise<void> {
+  const tokens = await readSessionTokens();
+  delete tokens[relayUrl];
+  await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
+}
+
+/**
+ * Purge all expired session tokens.
+ */
+export async function purgeExpiredSessionTokens(): Promise<number> {
+  const tokens = await readSessionTokens();
+  const now = Math.floor(Date.now() / 1000);
+  let purged = 0;
+
+  for (const url in tokens) {
+    if (tokens[url].expiresAt <= now) {
+      delete tokens[url];
+      purged++;
+    }
+  }
+
+  if (purged > 0) {
+    await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
+  }
+  return purged;
+}
+
+/**
+ * Clear all session tokens (e.g. on browser startup or profile switch).
+ */
+export async function clearSessionTokens(): Promise<void> {
+  await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: {} });
+}
+
+//#endregion Session Token Storage <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//#region Relay Auth Grants >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Read all relay auth grants.
+ */
+export async function readRelayAuthGrants(): Promise<RelayAuthGrants> {
+  const data = await browser.storage.local.get(ConfigurationKeys.RELAY_AUTH_GRANTS);
+  return (data[ConfigurationKeys.RELAY_AUTH_GRANTS] as RelayAuthGrants) ?? {};
+}
+
+/**
+ * Check if a relay URL has an active auth grant.
+ */
+export async function hasRelayAuthGrant(relayUrl: string): Promise<RelayAuthGrant | null> {
+  const grants = await readRelayAuthGrants();
+  const grant = grants[relayUrl];
+  if (!grant) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (grant.expiresAt !== null && grant.expiresAt <= now) {
+    // Expired — clean it up
+    delete grants[relayUrl];
+    await browser.storage.local.set({ [ConfigurationKeys.RELAY_AUTH_GRANTS]: grants });
+    return null;
+  }
+
+  return grant;
+}
+
+/**
+ * Add a relay auth grant (auto-approve kind:22242 for this relay).
+ */
+export async function addRelayAuthGrant(
+  relayUrl: string,
+  duration: PermissionDuration
+): Promise<void> {
+  const grants = await readRelayAuthGrants();
+  const now = Math.floor(Date.now() / 1000);
+
+  let expiresAt: number | null = null;
+  switch (duration) {
+    case 'once':    expiresAt = now; break;
+    case 'session': expiresAt = null; break;
+    case '5m':      expiresAt = now + 5 * 60; break;
+    case '30m':     expiresAt = now + 30 * 60; break;
+    case '1h':      expiresAt = now + 60 * 60; break;
+    case '8h':      expiresAt = now + 8 * 60 * 60; break;
+    case '24h':     expiresAt = now + 24 * 60 * 60; break;
+    case 'forever': expiresAt = null; break;
+  }
+
+  grants[relayUrl] = { relayUrl, grantedAt: now, expiresAt, duration };
+  await browser.storage.local.set({ [ConfigurationKeys.RELAY_AUTH_GRANTS]: grants });
+}
+
+/**
+ * Remove a relay auth grant.
+ */
+export async function removeRelayAuthGrant(relayUrl: string): Promise<void> {
+  const grants = await readRelayAuthGrants();
+  delete grants[relayUrl];
+  await browser.storage.local.set({ [ConfigurationKeys.RELAY_AUTH_GRANTS]: grants });
+}
+
+/**
+ * Clear all relay auth grants (e.g. on browser startup for session-scoped grants).
+ */
+export async function clearSessionRelayAuthGrants(): Promise<void> {
+  const grants = await readRelayAuthGrants();
+  for (const url in grants) {
+    if (grants[url].duration === 'session') {
+      delete grants[url];
+    }
+  }
+  await browser.storage.local.set({ [ConfigurationKeys.RELAY_AUTH_GRANTS]: grants });
+}
+
+/**
+ * Purge all expired relay auth grants.
+ */
+export async function purgeExpiredRelayAuthGrants(): Promise<number> {
+  const grants = await readRelayAuthGrants();
+  const now = Math.floor(Date.now() / 1000);
+  let purged = 0;
+
+  for (const url in grants) {
+    if (grants[url].expiresAt !== null && grants[url].expiresAt <= now) {
+      delete grants[url];
+      purged++;
+    }
+  }
+
+  if (purged > 0) {
+    await browser.storage.local.set({ [ConfigurationKeys.RELAY_AUTH_GRANTS]: grants });
+  }
+  return purged;
+}
+
+//#endregion Relay Auth Grants <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 /**
  * Gets the encrypted private key from storage

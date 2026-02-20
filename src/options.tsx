@@ -83,7 +83,8 @@ interface OptionsState {
   version: string;
   pinEnabled: boolean;
   pinCacheDuration: number;
-  nip42AutoSign: boolean;
+  relayAuthGrants: any;
+  sessionTokenCount: number;
 }
 
 class Options extends Component<{}, OptionsState> {
@@ -113,7 +114,8 @@ class Options extends Component<{}, OptionsState> {
     version: '0.0.0',
     pinEnabled: false,
     pinCacheDuration: 10 * 1000,
-    nip42AutoSign: false,
+    relayAuthGrants: {},
+    sessionTokenCount: 0,
   };
 
   private messageTimer: any = null;
@@ -139,7 +141,8 @@ class Options extends Component<{}, OptionsState> {
     // Check PIN protection status
     Storage.isPinEnabled().then(enabled => this.setState({ pinEnabled: enabled }));
     Storage.getPinCacheDuration().then(duration => this.setState({ pinCacheDuration: duration }));
-    Storage.isNip42AutoSignEnabled().then(enabled => this.setState({ nip42AutoSign: enabled }));
+    Storage.readRelayAuthGrants().then(grants => this.setState({ relayAuthGrants: grants }));
+    Storage.readSessionTokens().then(tokens => this.setState({ sessionTokenCount: Object.keys(tokens).length }));
 
     // Load site permissions (global, not per-profile)
     Storage.readSitePermissions().then(perms => this.setState({ sitePermissions: perms }));
@@ -393,7 +396,8 @@ class Options extends Component<{}, OptionsState> {
           console.warn('[profiles] Quota exceeded — clearing non-essential storage and retrying');
           const keysToKeep = [
             'private_key', 'profiles', 'pin_enabled', 'encrypted_private_key',
-            'active_public_key', 'pin_cache_duration', 'nip42_auto_sign',
+            'active_public_key', 'pin_cache_duration',
+            'session_tokens', 'relay_auth_grants',
             'site_permissions', 'security_preferences',
           ];
           const essentials = await browser.storage.local.get(keysToKeep);
@@ -463,16 +467,17 @@ class Options extends Component<{}, OptionsState> {
     this.showMessage('PIN cache duration updated', 'success');
   };
 
-  handleNip42AutoSignToggle = async () => {
-    const newValue = !this.state.nip42AutoSign;
-    await Storage.setNip42AutoSign(newValue);
-    this.setState({ nip42AutoSign: newValue });
-    this.showMessage(
-      newValue
-        ? 'NIP-42 auto-sign enabled. Relay AUTH events will be signed automatically.'
-        : 'NIP-42 auto-sign disabled. You will be prompted for each relay AUTH.',
-      'info'
-    );
+  handleClearSessionTokens = async () => {
+    await Storage.clearSessionTokens();
+    this.setState({ sessionTokenCount: 0 });
+    this.showMessage('All session tokens cleared. You will need to re-authenticate with relays.', 'info');
+  };
+
+  handleRemoveRelayAuthGrant = async (relayUrl: string) => {
+    await Storage.removeRelayAuthGrant(relayUrl);
+    const grants = await Storage.readRelayAuthGrants();
+    this.setState({ relayAuthGrants: grants });
+    this.showMessage(`Auth grant removed for ${relayUrl}`, 'info');
   };
 
   //#endregion Private key
@@ -815,11 +820,12 @@ class Options extends Component<{}, OptionsState> {
   }
 
   renderSecuritySection() {
-    const { pinEnabled, pinCacheDuration, nip42AutoSign } = this.state;
+    const { pinEnabled, pinCacheDuration, relayAuthGrants, sessionTokenCount } = this.state;
+    const grantEntries = Object.values(relayAuthGrants || {}) as any[];
     return (
       <div className="opts-section">
         <h2 className="opts-section-title">Security</h2>
-        <p className="opts-section-desc">PIN encryption and relay authentication.</p>
+        <p className="opts-section-desc">PIN encryption, relay authentication, and session tokens.</p>
 
         <div className="card">
           <div className="card-body">
@@ -847,15 +853,55 @@ class Options extends Component<{}, OptionsState> {
 
         <div className="card">
           <div className="card-body">
-            <div className="switch-row">
-              <div className="switch-label">
-                <strong>NIP-42 Auto-Sign</strong>
-                <span>Automatically sign relay AUTH challenges. This only proves your identity to relays — it cannot post or spend on your behalf.</span>
-              </div>
-              <input type="checkbox" className="toggle" checked={nip42AutoSign} onChange={this.handleNip42AutoSignToggle} />
-            </div>
+            <strong>Session Tokens</strong>
+            <p className="form-hint">
+              Session tokens let you authenticate with relays once, then reconnect without re-signing.
+              Tokens are shared across all Nostr client apps using this extension.
+            </p>
+            <p className="form-hint">
+              Active tokens: <strong>{sessionTokenCount}</strong>
+            </p>
+            {sessionTokenCount > 0 && (
+              <button className="button button-danger" style={{ 'margin-top': '8px' }} onClick={this.handleClearSessionTokens}>
+                Clear all session tokens
+              </button>
+            )}
           </div>
         </div>
+
+        {grantEntries.length > 0 && (
+          <div className="card">
+            <div className="card-body">
+              <strong>Trusted Relays (Auto-Auth)</strong>
+              <p className="form-hint">
+                These relays are trusted to receive your identity proof automatically.
+                Auth challenges (kind:22242) from these relays are signed without prompting.
+              </p>
+              <div className="relays-list" style={{ 'margin-top': '8px' }}>
+                {grantEntries.map((grant: any) => (
+                  <div key={grant.relayUrl} className="relay-row">
+                    <div className="relay-url">
+                      <RadioIcon />
+                      <span>{grant.relayUrl}</span>
+                    </div>
+                    <div className="relay-controls">
+                      <span className="form-hint" style={{ 'margin-right': '8px' }}>
+                        {grant.duration === 'forever' ? 'forever' : grant.duration}
+                      </span>
+                      <button
+                        className="button-onlyicon icon-btn-danger"
+                        onClick={() => this.handleRemoveRelayAuthGrant(grant.relayUrl)}
+                        title="Remove trust"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1020,7 +1066,8 @@ class Options extends Component<{}, OptionsState> {
       // Read essential data into memory first
       const keysToKeep = [
         'private_key', 'profiles', 'pin_enabled', 'encrypted_private_key',
-        'active_public_key', 'pin_cache_duration', 'nip42_auto_sign',
+        'active_public_key', 'pin_cache_duration',
+        'session_tokens', 'relay_auth_grants',
         'site_permissions', 'security_preferences',
       ];
       const essentials = await browser.storage.local.get(keysToKeep);

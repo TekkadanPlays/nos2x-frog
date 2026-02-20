@@ -178,6 +178,37 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any) => {
     return { success: true };
   }
 
+  // Session token management
+  if (message.type === 'getSessionToken') {
+    const entry = await Storage.getSessionToken(message.relayUrl);
+    return entry ? { token: entry.token, expiresAt: entry.expiresAt, pubkey: entry.pubkey } : null;
+  }
+  if (message.type === 'setSessionToken') {
+    await Storage.setSessionToken({
+      relayUrl: message.relayUrl,
+      token: message.token,
+      expiresAt: message.expiresAt,
+      pubkey: message.pubkey,
+    });
+    return { success: true };
+  }
+  if (message.type === 'removeSessionToken') {
+    await Storage.removeSessionToken(message.relayUrl);
+    return { success: true };
+  }
+  if (message.type === 'getSessionTokens') {
+    return await Storage.readSessionTokens();
+  }
+
+  // Relay auth grant management
+  if (message.type === 'getRelayAuthGrants') {
+    return await Storage.readRelayAuthGrants();
+  }
+  if (message.type === 'removeRelayAuthGrant') {
+    await Storage.removeRelayAuthGrant(message.relayUrl);
+    return { success: true };
+  }
+
   // PIN messages
   if (message.type === 'setupPin' || message.type === 'verifyPin' || message.type === 'disablePin') {
     return handlePinMessage(message as PinMessage, sender);
@@ -222,10 +253,13 @@ browser.runtime.onMessageExternal.addListener(async (message: any, sender: any) 
 //#region Lifecycle ----------------------------------------------------------
 
 browser.runtime.onStartup.addListener(async () => {
-  console.debug('Browser startup. Clearing stale prompts and session grants.');
+  console.debug('Browser startup. Clearing stale prompts, session grants, and expired tokens.');
   await PromptManager.clear();
   await Storage.clearSessionGrants();
   await Storage.purgeExpiredGrants();
+  await Storage.clearSessionRelayAuthGrants();
+  await Storage.purgeExpiredRelayAuthGrants();
+  await Storage.purgeExpiredSessionTokens();
   // Migrate old permissions if they exist
   await Storage.migrateOldPermissions();
 });
@@ -278,9 +312,15 @@ async function checkExistingGrant(
 ): Promise<{ authorized: boolean; disposition?: AuditDisposition }> {
   const eventKind = params.event?.kind;
 
-  // NIP-42 auto-sign
-  if (capability === 'signEvent' && eventKind === 22242 && secPrefs.nip42AutoSign) {
-    return { authorized: true, disposition: 'auto-signed' };
+  // Per-relay auth: auto-approve kind:22242 if we have a grant for the relay URL
+  if (capability === 'signEvent' && eventKind === 22242) {
+    const relayTag = params.event?.tags?.find((t: string[]) => t[0] === 'relay');
+    if (relayTag && relayTag[1]) {
+      const grant = await Storage.hasRelayAuthGrant(relayTag[1]);
+      if (grant) {
+        return { authorized: true, disposition: 'relay-auth' };
+      }
+    }
   }
 
   // Always prompt for critical-risk kinds if preference is set

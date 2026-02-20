@@ -341,16 +341,6 @@ class Prompt extends Component<{}, PromptState> {
     }
   };
 
-  handleApproveAllAuth = async (ev: any) => {
-    ev.preventDefault();
-    const { openPrompts } = this.state;
-    if (!openPrompts?.length) return;
-    const authPrompts = openPrompts.filter(p => p.params?.event?.kind === 22242);
-    for (const prompt of authPrompts) {
-      this.sendDecision('approve', prompt);
-    }
-  };
-
   movePrompt = (direction: number) => {
     const { openPrompts, activePromptIndex } = this.state;
     if (openPrompts?.length) {
@@ -381,7 +371,6 @@ class Prompt extends Component<{}, PromptState> {
         ? getKindRisk(current.params.event.kind)
         : capInfo?.risk || 'medium');
     const riskInfo = RISK_LABELS[riskTier];
-    const authPromptCount = openPrompts.filter(p => p.params?.event?.kind === 22242).length;
     const FLOOD_THRESHOLD = 10;
     const isFlood = openPrompts.length >= FLOOD_THRESHOLD;
     const isCritical = riskTier === 'critical';
@@ -500,11 +489,6 @@ class Prompt extends Component<{}, PromptState> {
 
         {/* Action buttons */}
         <div className="prompt-action-buttons">
-          {authPromptCount > 1 && (
-            <button className="button button-nip42-batch" onClick={this.handleApproveAllAuth}>
-              Authorize all {authPromptCount} AUTH events
-            </button>
-          )}
           <button className="button button-success" onClick={this.handleApprove}>
             <CheckmarkCircleIcon /> Approve
           </button>

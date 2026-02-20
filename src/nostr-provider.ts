@@ -59,6 +59,27 @@ window.nostr = {
     }
   },
 
+  session: {
+    async getToken(
+      relayUrl: string
+    ): Promise<{ token: string; expiresAt: number; pubkey: string } | null> {
+      return window.nostr._call('getSessionToken', { relayUrl });
+    },
+
+    async setToken(
+      relayUrl: string,
+      token: string,
+      expiresAt: number,
+      pubkey: string
+    ): Promise<void> {
+      return window.nostr._call('setSessionToken', { relayUrl, token, expiresAt, pubkey });
+    },
+
+    async removeToken(relayUrl: string): Promise<void> {
+      return window.nostr._call('removeSessionToken', { relayUrl });
+    }
+  },
+
   _call(type: string, params: PromptParams) {
     const id = Math.random().toString().slice(-4);
     console.log(
