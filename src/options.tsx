@@ -62,12 +62,14 @@ interface OptionsState {
   selectedProfilePubKey: string;
   profiles: ProfilesConfig;
   isLoadingProfile: boolean;
-  profileName: string | undefined;
+  isCreatingProfile: boolean;
+  newProfileName: string;
+  newProfileKey: string;
   profileExportJson: string;
   profileImportJson: string;
   isExportModalShown: boolean;
   isImportModalShown: boolean;
-  newProfileName: string;
+  editingName: string;
   privateKey: string;
   isKeyHidden: boolean;
   relays: RelayConfig[];
@@ -90,12 +92,14 @@ class Options extends Component<{}, OptionsState> {
     selectedProfilePubKey: '',
     profiles: {},
     isLoadingProfile: false,
-    profileName: undefined,
+    isCreatingProfile: false,
+    newProfileName: '',
+    newProfileKey: '',
     profileExportJson: '',
     profileImportJson: '',
     isExportModalShown: false,
     isImportModalShown: false,
-    newProfileName: '',
+    editingName: '',
     privateKey: '',
     isKeyHidden: true,
     relays: [],
@@ -119,9 +123,10 @@ class Options extends Component<{}, OptionsState> {
     // Load profiles
     Storage.readProfiles().then(profiles => {
       if (profiles) {
-        let selectedPubKey = Object.keys(profiles)[0];
+        const keys = Object.keys(profiles);
+        const selectedPubKey = keys.length > 0 ? keys[0] : '';
         this.setState({ profiles, selectedProfilePubKey: selectedPubKey }, () => {
-          this.loadAndSelectProfile(selectedPubKey);
+          if (selectedPubKey) this.loadAndSelectProfile(selectedPubKey);
         });
       }
     });
@@ -150,92 +155,106 @@ class Options extends Component<{}, OptionsState> {
 
   //#region Profiles
 
+  /**
+   * Select and load a profile's data into the editing fields.
+   * All state updates are batched into a single setState call.
+   */
   async loadAndSelectProfile(pubKey: string) {
     const profile: ProfileConfig = this.state.profiles[pubKey];
     if (!profile) {
-      console.warn(`The profile for pubkey '${pubKey}' does not exist.`);
+      console.warn(`[profiles] pubkey '${pubKey}' not found — ignoring.`);
       return;
     }
     this.setState({ isLoadingProfile: true });
     const currentPinEnabled = await Storage.isPinEnabled();
     this.setState({
-      profileName: profile.name,
+      selectedProfilePubKey: pubKey,
+      editingName: profile.name || '',
       relays: this.convertRelaysToUIArray(profile.relays),
       pinEnabled: currentPinEnabled,
       privateKey: formatPrivateKeyForDisplay(profile.privateKey || '', currentPinEnabled),
+      isKeyHidden: true,
       isLoadingProfile: false,
+      isCreatingProfile: false,
     });
-    console.log(`The profile for pubkey '${pubKey}' was loaded.`);
   }
 
   reloadSelectedProfile = () => {
     this.loadAndSelectProfile(this.state.selectedProfilePubKey);
   };
 
-  handleSelectedProfileChange = (event: any) => {
-    const pubKey = event.target.value;
-    this.setState({ selectedProfilePubKey: pubKey }, () => {
-      this.loadAndSelectProfile(pubKey);
-    });
+  /** Select a different profile pill. */
+  handleSelectProfile = (pubKey: string) => {
+    if (pubKey === this.state.selectedProfilePubKey && !this.state.isCreatingProfile) return;
+    this.loadAndSelectProfile(pubKey);
   };
 
+  /** Enter new-profile creation mode (no sentinel key in profiles). */
   handleNewProfileClick = () => {
-    const newProfile: ProfileConfig = { privateKey: '' };
     this.setState({
-      profiles: { ...this.state.profiles, ['']: newProfile },
-      selectedProfilePubKey: '',
-      relays: [],
-      privateKey: '',
+      isCreatingProfile: true,
       newProfileName: '',
+      newProfileKey: '',
+      privateKey: '',
+      isKeyHidden: true,
     });
   };
 
-  isNewProfilePending = () => {
-    return Object.keys(this.state.profiles).includes('');
+  /** Cancel new-profile creation and return to the selected profile. */
+  handleCancelNewProfile = () => {
+    const { selectedProfilePubKey } = this.state;
+    this.setState({ isCreatingProfile: false, newProfileName: '', newProfileKey: '' });
+    if (selectedProfilePubKey) this.loadAndSelectProfile(selectedProfilePubKey);
   };
 
   getSelectedProfile = (): ProfileConfig | null => {
     const { selectedProfilePubKey, profiles } = this.state;
-    return selectedProfilePubKey ? profiles[selectedProfilePubKey] : null;
+    return (selectedProfilePubKey && selectedProfilePubKey in profiles)
+      ? profiles[selectedProfilePubKey]
+      : null;
   };
 
-  handleProfileNameChange = (e: any) => {
-    this.setState({ profileName: e.target.value });
+  /** Inline name editing — update local state only. */
+  handleEditingNameChange = (e: any) => {
+    this.setState({ editingName: e.target.value });
   };
 
-  handleProfileNameBlur = async () => {
-    const profile = this.getSelectedProfile();
-    const { profileName, selectedProfilePubKey } = this.state;
-    if (profile && profileName != profile.name) {
-      profile.name = profileName?.trim() != '' ? profileName : undefined;
-      await Storage.updateProfile(profile, selectedProfilePubKey);
-      const profiles = { ...this.state.profiles };
-      profiles[selectedProfilePubKey] = { ...profile };
-      this.setState({ profiles });
-    }
+  /** Persist name on blur (immutable update). */
+  handleEditingNameBlur = async () => {
+    const { editingName, selectedProfilePubKey, profiles } = this.state;
+    const profile = profiles[selectedProfilePubKey];
+    if (!profile) return;
+    const newName = editingName.trim() || undefined;
+    if (newName === profile.name) return;
+    const updatedProfile = { ...profile, name: newName };
+    const updatedProfiles = { ...profiles, [selectedProfilePubKey]: updatedProfile };
+    this.setState({ profiles: updatedProfiles });
+    await Storage.updateProfile(updatedProfile, selectedProfilePubKey);
   };
 
-  handleProfileNameKeyDown = (e: any) => {
-    if (e.key === 'Enter') { e.target.blur(); }
+  handleEditingNameKeyDown = (e: any) => {
+    if (e.key === 'Enter') e.target.blur();
     if (e.key === 'Escape') {
       const profile = this.getSelectedProfile();
-      this.setState({ profileName: profile?.name });
+      this.setState({ editingName: profile?.name || '' });
       e.target.blur();
     }
   };
 
   handleExportProfileClick = () => {
     const profile = this.getSelectedProfile();
+    if (!profile) return;
     this.setState({ profileExportJson: JSON.stringify(profile), isExportModalShown: true });
   };
 
   handleExportProfileCopyClick = () => {
     navigator.clipboard.writeText(this.state.profileExportJson);
+    this.showMessage('Copied!', 'success');
   };
 
   handleExportModalClose = () => { this.setState({ isExportModalShown: false }); };
 
-  handleImportProfileClick = () => { this.setState({ isImportModalShown: true }); };
+  handleImportProfileClick = () => { this.setState({ profileImportJson: '', isImportModalShown: true }); };
 
   handleChangeProfileImportJson = (e: any) => {
     this.setState({ profileImportJson: e.target.value });
@@ -246,13 +265,11 @@ class Options extends Component<{}, OptionsState> {
     try {
       newProfile = JSON.parse(this.state.profileImportJson);
     } catch (error: any) {
-      console.warn(`Error parsing the entered JSON`, error);
-      this.showMessage(`There was an error parsing the JSON. ${error?.message}`, 'warning');
+      this.showMessage(`Invalid JSON: ${error?.message}`, 'warning');
       return;
     }
-    if (!newProfile) {
-      console.warn(`The imported profile is empty.`);
-      this.showMessage(`The imported profile is invalid.`, 'warning');
+    if (!newProfile || !newProfile.privateKey) {
+      this.showMessage('Imported profile must contain a privateKey.', 'warning');
       return;
     }
 
@@ -268,7 +285,7 @@ class Options extends Component<{}, OptionsState> {
         newPubKey = matchingProfile[0];
       } else {
         this.showMessage(
-          'Cannot import profile with encrypted private key without public key. Please decrypt first or provide public key.',
+          'Cannot import encrypted key without a matching profile. Decrypt first.',
           'warning'
         );
         return;
@@ -278,12 +295,13 @@ class Options extends Component<{}, OptionsState> {
     }
 
     await Storage.addProfile(newProfile, newPubKey);
+    const updatedProfiles = { ...this.state.profiles, [newPubKey]: newProfile };
     this.setState({
-      profiles: { ...this.state.profiles, [newPubKey]: newProfile },
-      privateKey: formatPrivateKeyForDisplay(newProfile.privateKey || '', pinEnabled),
-      selectedProfilePubKey: newPubKey,
+      profiles: updatedProfiles,
       isImportModalShown: false,
-    });
+      isCreatingProfile: false,
+    }, () => this.loadAndSelectProfile(newPubKey));
+    this.showMessage('Profile imported!', 'success');
   };
 
   handleImportModalClose = () => { this.setState({ isImportModalShown: false }); };
@@ -291,104 +309,120 @@ class Options extends Component<{}, OptionsState> {
   handleDeleteProfileClick = async (e: any) => {
     e.preventDefault();
     const { selectedProfilePubKey, profiles } = this.state;
-    if (window.confirm(`Delete the profile "${nip19.npubEncode(selectedProfilePubKey)}"?`)) {
-      await Storage.deleteProfile(selectedProfilePubKey);
-      const updateProfiles = { ...profiles };
-      delete updateProfiles[selectedProfilePubKey];
-      this.setState({ profiles: updateProfiles });
-    }
-  };
+    if (!selectedProfilePubKey || !(selectedProfilePubKey in profiles)) return;
+    const npub = nip19.npubEncode(selectedProfilePubKey);
+    const name = profiles[selectedProfilePubKey].name;
+    if (!window.confirm(`Delete "${name || npub}"? This cannot be undone.`)) return;
 
-  saveProfiles = async () => {
-    await Storage.updateProfiles(this.state.profiles);
+    await Storage.deleteProfile(selectedProfilePubKey);
+    const updatedProfiles = { ...profiles };
+    delete updatedProfiles[selectedProfilePubKey];
+    const remainingKeys = Object.keys(updatedProfiles);
+    const nextPubKey = remainingKeys.length > 0 ? remainingKeys[0] : '';
+    this.setState({ profiles: updatedProfiles, selectedProfilePubKey: nextPubKey }, () => {
+      if (nextPubKey) this.loadAndSelectProfile(nextPubKey);
+    });
+    this.showMessage('Profile deleted.', 'info');
   };
 
   //#endregion Profiles
 
   //#region Private key
 
-  savePrivateKey = async () => {
-    const { privateKey, profiles, selectedProfilePubKey } = this.state;
-    if (!this.isKeyValid()) return;
-
-    if (privateKey == '') {
-      console.warn("Won't save an empty private key");
+  /**
+   * Save a new profile (from the creation flow).
+   * Builds a fresh profiles clone — never mutates state in place.
+   */
+  saveNewProfile = async () => {
+    const { newProfileKey, newProfileName, profiles } = this.state;
+    if (!newProfileKey) {
+      this.showMessage('Enter or generate a private key first.', 'warning');
+      return;
+    }
+    if (!validatePrivateKeyFormat(newProfileKey)) {
+      this.showMessage('Invalid key format. Use nsec1... or 64-char hex.', 'warning');
       return;
     }
 
-    let privateKeyIntArray: Uint8Array | undefined = undefined;
-
-    if (isHexadecimal(privateKey)) {
-      privateKeyIntArray = convertHexToUint8Array(privateKey);
-    } else {
-      try {
-        let { type, data } = nip19.decode(privateKey);
+    try {
+      let privateKeyIntArray: Uint8Array | undefined;
+      if (isHexadecimal(newProfileKey)) {
+        privateKeyIntArray = convertHexToUint8Array(newProfileKey);
+      } else {
+        const { type, data } = nip19.decode(newProfileKey);
         if (type === 'nsec') privateKeyIntArray = data as Uint8Array;
-      } catch (err) {
-        console.error('Converting key to hexa (decode NIP19)', err);
       }
-    }
-
-    if (privateKeyIntArray) {
-      const privKeyNip19 = nip19.nsecEncode(privateKeyIntArray);
-      this.setState({ privateKey: privKeyNip19 });
+      if (!privateKeyIntArray) {
+        this.showMessage('Could not parse private key.', 'warning');
+        return;
+      }
 
       const hexPrivateKey = convertUint8ArrayToHex(privateKeyIntArray);
       const newPubKey = derivePublicKeyFromPrivateKey(hexPrivateKey);
-      profiles[newPubKey] = profiles[selectedProfilePubKey];
 
-      // Apply name from new profile flow
-      const trimmedName = this.state.newProfileName?.trim();
-      if (trimmedName) {
-        profiles[newPubKey].name = trimmedName;
+      if (newPubKey in profiles) {
+        this.showMessage('A profile with this key already exists.', 'warning');
+        return;
       }
+
+      const newProfile: ProfileConfig = { privateKey: '' };
+      const trimmedName = newProfileName.trim();
+      if (trimmedName) newProfile.name = trimmedName;
 
       const pinEnabled = await Storage.isPinEnabled();
       if (pinEnabled) {
-        try {
-          const encryptResponse: { success: boolean; encryptedKey?: string; error?: string } =
-            (await browser.runtime.sendMessage({
-              type: 'encryptPrivateKey',
-              privateKey: hexPrivateKey
-            })) as any;
-
-          if (!encryptResponse || !encryptResponse.success) {
-            this.showMessage(
-              encryptResponse?.error ||
-                'Failed to encrypt private key. PIN is required when PIN protection is enabled.',
-              'warning'
-            );
-            return;
-          }
-          if (!encryptResponse.encryptedKey) {
-            this.showMessage('Failed to encrypt private key: no encrypted key returned', 'warning');
-            return;
-          }
-          profiles[newPubKey].privateKey = encryptResponse.encryptedKey;
-        } catch (error: any) {
-          console.error('Error encrypting private key:', error);
-          this.showMessage('Failed to encrypt private key. ' + error?.message, 'warning');
+        const resp: any = await browser.runtime.sendMessage({
+          type: 'encryptPrivateKey',
+          privateKey: hexPrivateKey,
+        });
+        if (!resp?.success || !resp?.encryptedKey) {
+          this.showMessage(resp?.error || 'PIN encryption failed.', 'warning');
           return;
         }
+        newProfile.privateKey = resp.encryptedKey;
       } else {
-        profiles[newPubKey].privateKey = hexPrivateKey;
+        newProfile.privateKey = hexPrivateKey;
       }
 
-      delete profiles[selectedProfilePubKey];
-      this.setState({ selectedProfilePubKey: newPubKey, profiles }, () => {
+      const updatedProfiles = { ...profiles, [newPubKey]: newProfile };
+      try {
+        await Storage.updateProfiles(updatedProfiles);
+      } catch (storageErr: any) {
+        if (storageErr?.message?.includes('uota')) {
+          // Quota exceeded — surgical clear: save essentials, nuke storage, restore + new profile
+          console.warn('[profiles] Quota exceeded — clearing non-essential storage and retrying');
+          const keysToKeep = [
+            'private_key', 'profiles', 'pin_enabled', 'encrypted_private_key',
+            'active_public_key', 'pin_cache_duration', 'nip42_auto_sign',
+            'site_permissions', 'security_preferences',
+          ];
+          const essentials = await browser.storage.local.get(keysToKeep);
+          await browser.storage.local.clear();
+          const toRestore: Record<string, any> = {};
+          for (const [k, v] of Object.entries(essentials)) {
+            if (v !== undefined && v !== null) toRestore[k] = v;
+          }
+          if (Object.keys(toRestore).length > 0) {
+            await browser.storage.local.set(toRestore);
+          }
+          await Storage.updateProfiles(updatedProfiles);
+        } else {
+          throw storageErr;
+        }
+      }
+      this.setState({ profiles: updatedProfiles, isCreatingProfile: false }, () => {
         this.loadAndSelectProfile(newPubKey);
       });
-
-      await this.saveProfiles();
-    } else {
-      console.warn('Saving and empty private key');
+      this.showMessage('Profile saved!', 'success');
+    } catch (error: any) {
+      console.error('[profiles] saveNewProfile error:', error);
+      this.showMessage('Save failed: ' + (error?.message || 'unknown error'), 'warning');
     }
-
-    this.showMessage('Saved private key!', 'success');
   };
 
-  isKeyValid = () => {
-    return validatePrivateKeyFormat(this.state.privateKey);
+  isNewKeyValid = () => {
+    const key = this.state.newProfileKey;
+    return key !== '' && validatePrivateKeyFormat(key);
   };
 
   handlePrivateKeyChange = (e: any) => {
@@ -396,7 +430,13 @@ class Options extends Component<{}, OptionsState> {
   };
 
   generateRandomPrivateKey = () => {
-    this.setState({ privateKey: nip19.nsecEncode(generateSecretKey()) });
+    const key = nip19.nsecEncode(generateSecretKey());
+    // Target the correct field depending on whether we're creating or viewing
+    if (this.state.isCreatingProfile) {
+      this.setState({ newProfileKey: key });
+    } else {
+      this.setState({ privateKey: key });
+    }
   };
 
   handlePrivateKeyShowClick = () => {
@@ -613,10 +653,13 @@ class Options extends Component<{}, OptionsState> {
   }
 
   renderProfilesSection() {
-    const { selectedProfilePubKey, profiles, profileName, privateKey, isKeyHidden } = this.state;
-    const profileKeys = Object.keys(profiles).filter(pk => pk !== '');
-    const isNewPending = this.isNewProfilePending();
-    const isExisting = selectedProfilePubKey !== '';
+    const {
+      selectedProfilePubKey, profiles, isCreatingProfile,
+      editingName, privateKey, isKeyHidden,
+      newProfileName, newProfileKey,
+    } = this.state;
+    const profileKeys = Object.keys(profiles);
+    const isExisting = selectedProfilePubKey !== '' && selectedProfilePubKey in profiles;
     const selectedNpub = isExisting ? nip19.npubEncode(selectedProfilePubKey) : '';
 
     return (
@@ -626,7 +669,7 @@ class Options extends Component<{}, OptionsState> {
             <h2 className="opts-section-title">Profiles</h2>
             <p className="opts-section-desc">Signing identities. Each profile has its own key, relays, and permissions.</p>
           </div>
-          {!isNewPending && (
+          {!isCreatingProfile && (
             <button className="prof-add-btn" onClick={this.handleNewProfileClick}>
               <AddCircleIcon /> New
             </button>
@@ -638,12 +681,12 @@ class Options extends Component<{}, OptionsState> {
           <div className="prof-selector">
             {profileKeys.map(pk => {
               const p = profiles[pk];
-              const active = pk === selectedProfilePubKey;
+              const active = pk === selectedProfilePubKey && !isCreatingProfile;
               return (
                 <button
                   key={pk}
                   className={`prof-pill${active ? ' prof-pill-active' : ''}`}
-                  onClick={() => { if (!active) { this.setState({ selectedProfilePubKey: pk }); this.loadAndSelectProfile(pk); } }}
+                  onClick={() => this.handleSelectProfile(pk)}
                 >
                   <span className={`prof-pill-dot${active ? ' prof-pill-dot-active' : ''}`} />
                   <span className="prof-pill-name">{p.name || 'Unnamed'}</span>
@@ -654,7 +697,7 @@ class Options extends Component<{}, OptionsState> {
         )}
 
         {/* New profile creation flow */}
-        {isNewPending && (
+        {isCreatingProfile && (
           <div className="card prof-detail-card">
             <div className="card-body">
               <div className="prof-detail-header">
@@ -664,7 +707,7 @@ class Options extends Component<{}, OptionsState> {
                 <span className="form-label">Profile name</span>
                 <input
                   type="text"
-                  value={this.state.newProfileName}
+                  value={newProfileName}
                   onInput={(e: any) => this.setState({ newProfileName: e.target.value })}
                   placeholder="e.g. Main, Work, Burner..."
                 />
@@ -674,10 +717,10 @@ class Options extends Component<{}, OptionsState> {
                 <span className="form-label">Private key</span>
                 <div className="input-group">
                   <input
-                    id="private-key"
+                    id="new-profile-key"
                     type={isKeyHidden ? 'password' : 'text'}
-                    value={privateKey}
-                    onInput={this.handlePrivateKeyChange}
+                    value={newProfileKey}
+                    onInput={(e: any) => this.setState({ newProfileKey: e.target.value.toLowerCase().trim() })}
                     placeholder="nsec1... or hex"
                   />
                   <button onClick={this.handlePrivateKeyShowClick} title={isKeyHidden ? 'Show' : 'Hide'}>
@@ -694,7 +737,8 @@ class Options extends Component<{}, OptionsState> {
                   <ArrowUpCircleIcon /> Import
                 </button>
                 <span className="opts-toolbar-spacer" />
-                <button className="button-primary" disabled={!this.isKeyValid()} onClick={this.savePrivateKey}>
+                <button onClick={this.handleCancelNewProfile}>Cancel</button>
+                <button className="button-primary" disabled={!this.isNewKeyValid()} onClick={this.saveNewProfile}>
                   Save
                 </button>
               </div>
@@ -703,7 +747,7 @@ class Options extends Component<{}, OptionsState> {
         )}
 
         {/* Selected profile detail card */}
-        {isExisting && !isNewPending && (
+        {isExisting && !isCreatingProfile && (
           <div className="card prof-detail-card">
             <div className="card-body">
               {/* Editable name */}
@@ -711,11 +755,11 @@ class Options extends Component<{}, OptionsState> {
                 <input
                   className="prof-detail-name"
                   type="text"
-                  value={profileName ?? ''}
+                  value={editingName}
                   placeholder="Click to name this profile..."
-                  onInput={this.handleProfileNameChange}
-                  onBlur={this.handleProfileNameBlur}
-                  onKeyDown={this.handleProfileNameKeyDown}
+                  onInput={this.handleEditingNameChange}
+                  onBlur={this.handleEditingNameBlur}
+                  onKeyDown={this.handleEditingNameKeyDown}
                 />
                 <PencilIcon />
               </div>
@@ -759,7 +803,7 @@ class Options extends Component<{}, OptionsState> {
         )}
 
         {/* Empty state */}
-        {profileKeys.length === 0 && !isNewPending && (
+        {profileKeys.length === 0 && !isCreatingProfile && (
           <div className="card">
             <div className="card-body">
               <p className="opts-empty">No profiles yet. Create one to get started.</p>
@@ -970,11 +1014,54 @@ class Options extends Component<{}, OptionsState> {
     );
   }
 
+  handleClearAuditLogClick = async () => {
+    if (!window.confirm('Clear the audit log and free storage space? Your profiles, keys, and permissions are preserved.')) return;
+    try {
+      // Read essential data into memory first
+      const keysToKeep = [
+        'private_key', 'profiles', 'pin_enabled', 'encrypted_private_key',
+        'active_public_key', 'pin_cache_duration', 'nip42_auto_sign',
+        'site_permissions', 'security_preferences',
+      ];
+      const essentials = await browser.storage.local.get(keysToKeep);
+
+      // Nuclear clear — this always succeeds regardless of quota
+      await browser.storage.local.clear();
+
+      // Restore only the essential data (without the bloated audit log)
+      const toRestore: Record<string, any> = {};
+      for (const [k, v] of Object.entries(essentials)) {
+        if (v !== undefined && v !== null) toRestore[k] = v;
+      }
+      if (Object.keys(toRestore).length > 0) {
+        await browser.storage.local.set(toRestore);
+      }
+
+      this.showMessage('Audit log cleared — storage freed!', 'success');
+    } catch (err: any) {
+      this.showMessage('Failed: ' + err?.message, 'warning');
+    }
+  };
+
   renderDangerSection() {
     return (
       <div className="opts-section">
         <h2 className="opts-section-title opts-section-title-danger">Danger Zone</h2>
         <p className="opts-section-desc">Irreversible actions. Proceed with caution.</p>
+
+        <div className="card card-danger-outline">
+          <div className="card-body">
+            <div className="danger-row">
+              <div className="danger-info">
+                <strong>Clear audit log</strong>
+                <span>Remove all request history. Frees storage space if the extension is running low on quota.</span>
+              </div>
+              <button className="button-danger-outline" onClick={this.handleClearAuditLogClick}>
+                <TrashIcon /> Clear
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div className="card card-danger-outline">
           <div className="card-body">

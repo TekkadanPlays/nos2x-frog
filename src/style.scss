@@ -109,26 +109,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-// Force ALL inline SVG icons to render in the parent's text color.
-// Our Ionicons use stroke="currentColor" + fill="none" on most shapes,
-// but some shapes (e.g. <ellipse> in dice) have NO attrs and default
-// to fill:black. Two rules handle both cases:
-//   1. Elements with no fill attr → fill with currentColor
-//   2. Elements with fill="none" → keep transparent, use stroke
+// Force ALL inline SVG icons to inherit the parent's text color.
+// SVGR renders SVG attributes as DOM properties, not HTML attributes,
+// so attribute selectors like :not([fill]) are unreliable.
+// Instead we force every shape to use currentColor via CSS properties
+// (CSS properties override SVG presentation attributes).
 svg {
   color: inherit;
-}
 
-// Catch-all: shapes without explicit fill get currentColor
-svg :not([fill]) {
-  fill: currentColor;
-}
+  path, circle, ellipse, rect, line, polyline, polygon {
+    fill: currentColor;
+    stroke: currentColor;
+  }
 
-// Stroke-based outlines: preserve fill="none" and ensure stroke is visible.
-// CSS overrides presentation attrs, so we must re-declare both.
-svg [fill="none"] {
-  fill: none;
-  stroke: currentColor;
+  // Stroke-only shapes: elements that explicitly set fill="none" in the SVG
+  // need fill reset. SVGR preserves fill="none" as a DOM property, and
+  // CSS `fill` overrides it above — so we re-declare via a more specific rule.
+  [fill="none"] {
+    fill: none !important;
+  }
 }
 
 a {
@@ -1543,6 +1542,16 @@ button.opts-nav-item {
   overflow-y: auto;
   padding: 2em 2.5em;
   max-width: 640px;
+
+  // Bump icon sizes in options pages for better visibility
+  button svg {
+    height: 1.15em;
+    width: auto;
+  }
+  .prof-detail-name-row svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .opts-section {

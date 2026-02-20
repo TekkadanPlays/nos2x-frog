@@ -86,8 +86,31 @@ async function flushToStorage(): Promise<void> {
       'audit_log_next_id': nextId,
       'audit_log_suppressed': suppressedCount,
     });
-  } catch (err) {
-    console.error('[AuditLog] Failed to flush to storage:', err);
+  } catch (err: any) {
+    // Quota exceeded — aggressively trim and retry once
+    if (err?.message?.includes('quota') || err?.message?.includes('Quota')) {
+      console.warn('[AuditLog] Quota exceeded — trimming to', Math.floor(MAX_ENTRIES / 4), 'entries');
+      entries = entries.slice(-Math.floor(MAX_ENTRIES / 4));
+      try {
+        await browser.storage.local.set({
+          [ConfigurationKeys.AUDIT_LOG]: entries,
+          'audit_log_next_id': nextId,
+          'audit_log_suppressed': suppressedCount,
+        });
+      } catch (retryErr) {
+        // Still failing — nuke the log entirely to free space
+        console.error('[AuditLog] Still over quota — clearing log entirely');
+        entries = [];
+        suppressedCount = 0;
+        await browser.storage.local.remove([
+          ConfigurationKeys.AUDIT_LOG,
+          'audit_log_next_id',
+          'audit_log_suppressed',
+        ]).catch(() => {});
+      }
+    } else {
+      console.error('[AuditLog] Failed to flush to storage:', err);
+    }
   }
 }
 
@@ -186,6 +209,21 @@ export function clearLog(): void {
     try { fn(); } catch (_) {}
   }
   scheduleFlush();
+}
+
+/**
+ * Immediately clear the audit log from storage to free quota.
+ * Returns a promise so callers can await the space being freed.
+ */
+export async function clearLogFromStorage(): Promise<void> {
+  entries = [];
+  suppressedCount = 0;
+  nextId = 1;
+  await browser.storage.local.remove([
+    ConfigurationKeys.AUDIT_LOG,
+    'audit_log_next_id',
+    'audit_log_suppressed',
+  ]);
 }
 
 /**
