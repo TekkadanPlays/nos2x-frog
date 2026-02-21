@@ -62,7 +62,7 @@ window.nostr = {
   session: {
     async getToken(
       relayUrl: string
-    ): Promise<{ token: string; expiresAt: number; pubkey: string } | null> {
+    ): Promise<{ token: string; expiresAt: number; pubkey: string; clientId: string } | null> {
       return window.nostr._call('getSessionToken', { relayUrl });
     },
 
@@ -70,13 +70,19 @@ window.nostr = {
       relayUrl: string,
       token: string,
       expiresAt: number,
-      pubkey: string
+      pubkey: string,
+      clientId?: string
     ): Promise<void> {
-      return window.nostr._call('setSessionToken', { relayUrl, token, expiresAt, pubkey });
+      return window.nostr._call('setSessionToken', { relayUrl, token, expiresAt, pubkey, clientId });
     },
 
     async removeToken(relayUrl: string): Promise<void> {
       return window.nostr._call('removeSessionToken', { relayUrl });
+    },
+
+    async getClientId(): Promise<string> {
+      const resp = await window.nostr._call('getClientId', {});
+      return resp.clientId;
     }
   },
 

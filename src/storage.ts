@@ -16,6 +16,7 @@ import {
   type SecurityPreferences,
   type SessionTokenEntry,
   type SessionTokenStore,
+  type ClientIdStore,
   type RelayAuthGrant,
   type RelayAuthGrants,
   PermissionDuration,
@@ -96,7 +97,55 @@ export async function setPinCacheDuration(durationMs: number): Promise<void> {
   });
 }
 
+//#region Client ID Management >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/**
+ * Generate a random 16-byte (32 hex char) client ID.
+ */
+function generateClientId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Read the persisted client ID store.
+ */
+async function readClientIds(): Promise<ClientIdStore> {
+  const data = await browser.storage.local.get(ConfigurationKeys.CLIENT_IDS);
+  return (data[ConfigurationKeys.CLIENT_IDS] as ClientIdStore) ?? {};
+}
+
+/**
+ * Get or create a persistent client ID for a given origin.
+ * Each origin gets a unique random 32-hex-char ID, generated once and stored.
+ */
+export async function getOrCreateClientId(origin: string): Promise<string> {
+  const store = await readClientIds();
+  if (store[origin]) return store[origin];
+
+  const id = generateClientId();
+  store[origin] = id;
+  await browser.storage.local.set({ [ConfigurationKeys.CLIENT_IDS]: store });
+  return id;
+}
+
+/**
+ * Get the client ID for an origin, or null if none exists yet.
+ */
+export async function getClientId(origin: string): Promise<string | null> {
+  const store = await readClientIds();
+  return store[origin] ?? null;
+}
+
+//#endregion Client ID Management <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 //#region Session Token Storage >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+/** Composite key for origin-scoped token storage */
+function tokenKey(relayUrl: string, origin: string): string {
+  return `${relayUrl}|${origin}`;
+}
 
 /**
  * Read all stored session tokens.
@@ -107,18 +156,21 @@ export async function readSessionTokens(): Promise<SessionTokenStore> {
 }
 
 /**
- * Get a session token for a specific relay URL.
- * Returns null if no token exists or the token is expired.
+ * Get a session token for a specific relay URL and origin.
+ * Returns null if no token exists, the token is expired, or it belongs to a different origin.
  */
-export async function getSessionToken(relayUrl: string): Promise<SessionTokenEntry | null> {
+export async function getSessionToken(relayUrl: string, origin: string): Promise<SessionTokenEntry | null> {
   const tokens = await readSessionTokens();
-  const entry = tokens[relayUrl];
+  const key = tokenKey(relayUrl, origin);
+  const entry = tokens[key];
   if (!entry) return null;
+
+  // Origin isolation check
+  if (entry.origin !== origin) return null;
 
   const now = Math.floor(Date.now() / 1000);
   if (entry.expiresAt <= now) {
-    // Expired — clean it up
-    delete tokens[relayUrl];
+    delete tokens[key];
     await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
     return null;
   }
@@ -127,20 +179,22 @@ export async function getSessionToken(relayUrl: string): Promise<SessionTokenEnt
 }
 
 /**
- * Store a session token for a relay.
+ * Store a session token for a relay, scoped to the calling origin.
  */
 export async function setSessionToken(entry: SessionTokenEntry): Promise<void> {
   const tokens = await readSessionTokens();
-  tokens[entry.relayUrl] = entry;
+  const key = tokenKey(entry.relayUrl, entry.origin);
+  tokens[key] = entry;
   await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
 }
 
 /**
- * Remove a session token for a relay.
+ * Remove a session token for a relay and origin.
  */
-export async function removeSessionToken(relayUrl: string): Promise<void> {
+export async function removeSessionToken(relayUrl: string, origin: string): Promise<void> {
   const tokens = await readSessionTokens();
-  delete tokens[relayUrl];
+  const key = tokenKey(relayUrl, origin);
+  delete tokens[key];
   await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: tokens });
 }
 
@@ -152,9 +206,9 @@ export async function purgeExpiredSessionTokens(): Promise<number> {
   const now = Math.floor(Date.now() / 1000);
   let purged = 0;
 
-  for (const url in tokens) {
-    if (tokens[url].expiresAt <= now) {
-      delete tokens[url];
+  for (const key in tokens) {
+    if (tokens[key].expiresAt <= now) {
+      delete tokens[key];
       purged++;
     }
   }
@@ -170,6 +224,15 @@ export async function purgeExpiredSessionTokens(): Promise<number> {
  */
 export async function clearSessionTokens(): Promise<void> {
   await browser.storage.local.set({ [ConfigurationKeys.SESSION_TOKENS]: {} });
+}
+
+/**
+ * Count active (non-expired) session tokens.
+ */
+export async function countActiveSessionTokens(): Promise<number> {
+  const tokens = await readSessionTokens();
+  const now = Math.floor(Date.now() / 1000);
+  return Object.values(tokens).filter(t => t.expiresAt > now).length;
 }
 
 //#endregion Session Token Storage <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

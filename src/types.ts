@@ -237,6 +237,7 @@ export enum ConfigurationKeys {
   ACTIVE_PUBLIC_KEY = 'active_public_key',
   PIN_CACHE_DURATION = 'pin_cache_duration',
   SESSION_TOKENS = 'session_tokens',
+  CLIENT_IDS = 'client_ids',
   RELAY_AUTH_GRANTS = 'relay_auth_grants',
   SITE_PERMISSIONS = 'site_permissions',
   AUDIT_LOG = 'audit_log',
@@ -399,7 +400,7 @@ export type PinMessageResponse = {
 
 //#region Session Token Types -----------------------------------------------
 
-/** A cached session token for a relay */
+/** A cached session token for a relay, scoped to a specific origin */
 export type SessionTokenEntry = {
   /** The relay WebSocket URL (e.g. "wss://relay.example.com") */
   relayUrl: string;
@@ -409,11 +410,20 @@ export type SessionTokenEntry = {
   expiresAt: number;
   /** The pubkey this token authenticates as (hex) */
   pubkey: string;
+  /** The client ID bound into this token (32 hex chars), used in SESSION commands */
+  clientId: string;
+  /** The origin (host) that stored this token — used for origin isolation */
+  origin: string;
 };
 
-/** Map of relay URL -> SessionTokenEntry */
+/** Map of composite key "relayUrl|origin" -> SessionTokenEntry */
 export type SessionTokenStore = {
-  [relayUrl: string]: SessionTokenEntry;
+  [key: string]: SessionTokenEntry;
+};
+
+/** Map of origin -> clientId (32 hex chars, persistent per origin) */
+export type ClientIdStore = {
+  [origin: string]: string;
 };
 
 /** A per-relay auth grant — allows auto-signing kind:22242 for trusted relays */

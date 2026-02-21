@@ -178,26 +178,37 @@ browser.runtime.onMessage.addListener(async (message: any, sender: any) => {
     return { success: true };
   }
 
-  // Session token management
+  // Session token management (origin-scoped)
   if (message.type === 'getSessionToken') {
-    const entry = await Storage.getSessionToken(message.relayUrl);
-    return entry ? { token: entry.token, expiresAt: entry.expiresAt, pubkey: entry.pubkey } : null;
+    const origin = message.host || '';
+    const entry = await Storage.getSessionToken(message.relayUrl, origin);
+    return entry ? { token: entry.token, expiresAt: entry.expiresAt, pubkey: entry.pubkey, clientId: entry.clientId } : null;
   }
   if (message.type === 'setSessionToken') {
+    const origin = message.host || '';
+    const clientId = await Storage.getOrCreateClientId(origin);
     await Storage.setSessionToken({
       relayUrl: message.relayUrl,
       token: message.token,
       expiresAt: message.expiresAt,
       pubkey: message.pubkey,
+      clientId: message.clientId || clientId,
+      origin,
     });
     return { success: true };
   }
   if (message.type === 'removeSessionToken') {
-    await Storage.removeSessionToken(message.relayUrl);
+    const origin = message.host || '';
+    await Storage.removeSessionToken(message.relayUrl, origin);
     return { success: true };
   }
   if (message.type === 'getSessionTokens') {
     return await Storage.readSessionTokens();
+  }
+  if (message.type === 'getClientId') {
+    const origin = message.host || '';
+    const clientId = await Storage.getOrCreateClientId(origin);
+    return { clientId };
   }
 
   // Relay auth grant management
@@ -558,6 +569,18 @@ async function processRequest({
         if (params.event?.pubkey && params.event.pubkey !== activePubKey) {
           throw new Error(`Public key mismatch: event pubkey doesn't match active profile.`);
         }
+
+        // For kind:22242 (relay auth), inject a client tag for client-bound session tokens.
+        // This ensures the relay binds the session token to this specific client origin.
+        if (params.event.kind === 22242 && host) {
+          const clientId = await Storage.getOrCreateClientId(host);
+          const tags = params.event.tags || [];
+          // Only add if not already present
+          if (!tags.some((t: string[]) => t[0] === 'client')) {
+            params.event.tags = [...tags, ['client', clientId]];
+          }
+        }
+
         const event = finalizeEvent(params.event, sk);
         result = validateEvent(event) ? event : { error: { message: 'Invalid event' } };
         break;

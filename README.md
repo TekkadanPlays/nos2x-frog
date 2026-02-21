@@ -29,30 +29,35 @@ async window.nostr.nip44.decrypt(pubkey, ciphertext): string
 
 ### Session Token API (extension)
 
-Ribbit Signer extends `window.nostr` with a session token broker. This allows client apps to store and retrieve relay session tokens through the extension, sharing them across all Nostr apps in the browser.
+Ribbit Signer extends `window.nostr` with a session token broker. Tokens are **origin-isolated** — each web app (origin) gets its own tokens that cannot be accessed by other origins. The extension also automatically generates a unique **client ID** per origin and injects it into NIP-42 auth events, so the relay binds each session token to the specific client that authenticated.
 
 ```javascript
-// Get a cached session token for a relay (returns null if none/expired)
-async window.nostr.session.getToken(relayUrl): { token, expiresAt, pubkey } | null
+// Get a cached session token for a relay (returns null if none/expired/wrong origin)
+async window.nostr.session.getToken(relayUrl): { token, expiresAt, pubkey, clientId } | null
 
 // Store a session token received from a relay
-async window.nostr.session.setToken(relayUrl, token, expiresAt, pubkey): void
+async window.nostr.session.setToken(relayUrl, token, expiresAt, pubkey, clientId?): void
 
 // Remove a stored session token
 async window.nostr.session.removeToken(relayUrl): void
+
+// Get this origin's unique client ID (32 hex chars, generated once, persisted)
+async window.nostr.session.getClientId(): string
 ```
 
 **How it works with strfry session tokens:**
 
 1. Client connects to relay → receives `["AUTH", "<challenge>"]`
 2. Client checks `window.nostr.session.getToken(relayUrl)` for a cached token
-3. If token exists → send `["SESSION", "<token>"]` to relay (no signing needed)
-4. If no token → sign kind:22242 via `window.nostr.signEvent()` → send `["AUTH", signedEvent]`
+3. If token exists → send `["SESSION", token, clientId]` to relay (no signing needed)
+4. If no token → sign kind:22242 via `window.nostr.signEvent()` → extension auto-injects `["client", clientId]` tag → send `["AUTH", signedEvent]`
 5. Relay responds with `["SESSION", "<token>", <expires_at>]`
 6. Client stores: `window.nostr.session.setToken(relayUrl, token, expiresAt, pubkey)`
-7. On reconnection or from another app, step 2 finds the cached token → zero signing
+7. On reconnection, step 2 finds the cached token → zero signing
 
-This eliminates the NIP-42 "hundreds of popups" problem at its root. One sign per relay, then tokens handle the rest — shared across every Nostr client app running in the browser.
+**Origin isolation:** Iris at `iris.to` and Snort at `snort.social` each get their own tokens. Iris cannot read Snort's tokens and vice versa. Each must do its own NIP-42 auth once, then use its own session token for reconnections.
+
+**Client binding:** The extension injects a `["client", "<client_id>"]` tag into kind:22242 events before signing. The relay bakes this client ID into the session token's HMAC. Even if a token were somehow leaked, it cannot be used without the matching client ID.
 
 ## Per-Relay Auth Grants
 
@@ -99,10 +104,10 @@ async function authenticateWithRelay(ws, relayUrl) {
   const cached = await window.nostr.session.getToken(relayUrl);
 
   if (cached) {
-    // Try session token first (no signing needed)
-    ws.send(JSON.stringify(["SESSION", cached.token]));
+    // Try session token first — include clientId for client-bound validation
+    ws.send(JSON.stringify(["SESSION", cached.token, cached.clientId]));
     // If relay accepts, it sends a fresh token — store it
-    // If relay rejects (expired/restart), fall back to NIP-42 below
+    // If relay rejects (expired/restart/wrong client), fall back to NIP-42 below
     return;
   }
 
@@ -110,6 +115,8 @@ async function authenticateWithRelay(ws, relayUrl) {
   // relay sends: ["AUTH", "<challenge>"]
 
   // Step 3: Sign the auth event
+  // NOTE: The extension automatically injects ["client", clientId] into the event
+  // before signing, so the relay binds the session token to this origin.
   const authEvent = {
     kind: 22242,
     created_at: Math.floor(Date.now() / 1000),
@@ -138,9 +145,12 @@ If your relay runs strfry with session tokens enabled, you can verify identity v
 const cached = await window.nostr.session.getToken(relayUrl);
 if (cached) {
   const resp = await fetch(`https://relay.example.com/auth/verify`, {
-    headers: { 'Authorization': `Nostr-Session ${cached.token}` }
+    headers: {
+      'Authorization': `Nostr-Session ${cached.token}`,
+      'Nostr-Client': cached.clientId  // required for client-bound tokens
+    }
   });
-  const { pubkey, expires_at } = await resp.json();
+  const { pubkey, expires_at, client_id } = await resp.json();
   // pubkey is the authenticated user's hex public key
 }
 ```

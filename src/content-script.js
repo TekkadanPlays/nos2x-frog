@@ -12,7 +12,7 @@ document.head.appendChild(script);
 // Session token message types that use params fields directly
 const SESSION_TYPES = new Set([
   'getSessionToken', 'setSessionToken', 'removeSessionToken', 'getSessionTokens',
-  'getRelayAuthGrants', 'removeRelayAuthGrant',
+  'getClientId', 'getRelayAuthGrants', 'removeRelayAuthGrant',
 ]);
 
 // listen for messages from that script

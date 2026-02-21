@@ -142,7 +142,7 @@ class Options extends Component<{}, OptionsState> {
     Storage.isPinEnabled().then(enabled => this.setState({ pinEnabled: enabled }));
     Storage.getPinCacheDuration().then(duration => this.setState({ pinCacheDuration: duration }));
     Storage.readRelayAuthGrants().then(grants => this.setState({ relayAuthGrants: grants }));
-    Storage.readSessionTokens().then(tokens => this.setState({ sessionTokenCount: Object.keys(tokens).length }));
+    Storage.countActiveSessionTokens().then(count => this.setState({ sessionTokenCount: count }));
 
     // Load site permissions (global, not per-profile)
     Storage.readSitePermissions().then(perms => this.setState({ sitePermissions: perms }));
