@@ -10,6 +10,7 @@ const isProd =
   process.argv.indexOf('prod') !== -1 ||
   process.argv.indexOf('prod-hosted') !== -1;
 const isHosted = process.argv.indexOf('prod-hosted') !== -1;
+const isChrome = process.argv.indexOf('chrome') !== -1;
 
 esbuild
   .build({
@@ -47,7 +48,9 @@ esbuild
         assets: [
           {
             from: [
-              isHosted ? './src/hosted/manifest.json' : './src/manifest.json'
+              isChrome ? './src/manifest-chrome.json'
+                : isHosted ? './src/hosted/manifest.json'
+                : './src/manifest.json'
             ],
             to: ['./']
           },
@@ -77,9 +80,21 @@ esbuild
       global: 'window'
     }
   })
-  .then(() =>
-    console.log(`Build success. Prod=${isProd} - Hosted=${isHosted}.`)
-  )
+  .then(() => {
+    // Chrome manifest needs to be renamed from manifest-chrome.json to manifest.json
+    if (isChrome) {
+      const fs = require('fs');
+      const path = require('path');
+      const dist = path.join(__dirname, 'dist');
+      const src = path.join(dist, 'manifest-chrome.json');
+      const dest = path.join(dist, 'manifest.json');
+      if (fs.existsSync(src)) {
+        if (fs.existsSync(dest)) fs.unlinkSync(dest);
+        fs.renameSync(src, dest);
+      }
+    }
+    console.log(`Build success. Prod=${isProd} - Hosted=${isHosted} - Chrome=${isChrome}.`);
+  })
   .catch(err =>
-    console.error(`Build error. Prod=${isProd} - Hosted=${isHosted}.`, err)
+    console.error(`Build error. Prod=${isProd} - Hosted=${isHosted} - Chrome=${isChrome}.`, err)
   );

@@ -1,0 +1,46 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build Firefox extension
+        run: node build.js prod
+
+      - name: Package Firefox .xpi
+        run: |
+          cd dist && zip -r ../releases/ribbit-signer-firefox.xpi . && cd ..
+
+      - name: Build Chrome extension
+        run: node build.js prod chrome
+
+      - name: Package Chrome .zip
+        run: |
+          mkdir -p releases
+          cd dist && zip -r ../releases/ribbit-signer-chrome.zip . && cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            releases/ribbit-signer-firefox.xpi
+            releases/ribbit-signer-chrome.zip
+          generate_release_notes: true

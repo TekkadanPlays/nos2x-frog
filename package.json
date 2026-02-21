@@ -8,13 +8,15 @@
     "type": "github"
   },
   "scripts": {
-    "build": "./build.js prod",
-    "build:hosted": "./build.js prod-hosted",
-    "watch": "ag -l --js | entr ./build.js",
-    "package:src": "cd src; zip -r ribbit-signer__src *; cd ..; mv src/ribbit-signer__src.zip ./var/releases/",
-    "package": "yarn run build; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/ribbit-signer.xpi",
-    "package:hosted": "yarn run build:hosted; cd dist; zip -r archive *; cd ..; mv dist/archive.zip ./var/releases/ribbit-signer_hosted.xpi",
-    "start:firefox": "web-ext run --source-dir ./dist/"
+    "build": "node build.js prod",
+    "build:chrome": "node build.js prod chrome",
+    "build:hosted": "node build.js prod-hosted",
+    "watch": "node build.js",
+    "release": "node release.js all",
+    "release:firefox": "node release.js firefox",
+    "release:chrome": "node release.js chrome",
+    "start:firefox": "web-ext run --source-dir ./dist/",
+    "start:chrome": "node build.js prod chrome && echo 'Load dist/ as unpacked extension in chrome://extensions'"
   },
   "dependencies": {
     "date-fns": "4.1.0",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/web": "^0.0.300",
     "@types/webextension-polyfill": "^0.12.1",
+    "archiver": "^7.0.1",
     "esbuild": "^0.27.1",
     "esbuild-plugin-clean": "^1.0.1",
     "esbuild-plugin-copy": "^2.0.1",

@@ -83,21 +83,57 @@ See the [strfry README](https://github.com/TekkadanPlays/strfry#authentication-n
 
 ## Install
 
-Build from source (see Develop below), then load as a temporary add-on in Firefox.
+### From GitHub Releases (recommended)
 
-## Develop
+Download the latest release from [Releases](https://github.com/TekkadanPlays/nos2x-frog/releases):
 
+**Firefox:**
+1. Download `ribbit-signer-*-firefox.xpi`
+2. Open Firefox → `about:addons` → gear icon → "Install Add-on From File..."
+3. Select the `.xpi` file
+
+**Chrome / Brave / Edge:**
+1. Download `ribbit-signer-*-chrome.zip`
+2. Unzip to a folder
+3. Open `chrome://extensions` (or `brave://extensions`, `edge://extensions`)
+4. Enable "Developer mode" (toggle in top-right)
+5. Click "Load unpacked" → select the unzipped folder
+
+### Build from Source
+
+Requires [Node.js](https://nodejs.org/) 18+ and [Yarn](https://yarnpkg.com/).
+
+```bash
+git clone https://github.com/TekkadanPlays/nos2x-frog
+cd nos2x-frog
+yarn install
 ```
-$ git clone https://github.com/TekkadanPlays/nos2x-frog
-$ cd nos2x-frog
-$ yarn install
-$ yarn run build
+
+**Build for Firefox:**
+```bash
+yarn build              # production build → dist/
 ```
 
-1. Open Firefox → `about:debugging`
-2. Click "This Firefox"
-3. Click "Load Temporary Add-on..."
-4. Select any file from the `dist/` folder
+**Build for Chrome (Manifest V3):**
+```bash
+yarn build:chrome       # production build → dist/
+```
+
+**Build release packages (both browsers):**
+```bash
+yarn release            # → releases/ribbit-signer-*-firefox.xpi
+                        #   releases/ribbit-signer-*-chrome.zip
+```
+
+**Load for development:**
+
+Firefox:
+1. `yarn start:firefox` — launches Firefox with the extension auto-loaded
+2. Or: `about:debugging` → "This Firefox" → "Load Temporary Add-on..." → select any file in `dist/`
+
+Chrome:
+1. `yarn build:chrome`
+2. `chrome://extensions` → "Developer mode" → "Load unpacked" → select `dist/`
 
 ## PIN Protection
 

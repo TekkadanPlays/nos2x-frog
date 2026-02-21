@@ -1,0 +1,39 @@
+{
+  "name": "Ribbit Signer",
+  "description": "Nostr Signer Extension for ribbit.network",
+  "version": "2.0.0",
+  "homepage_url": "https://github.com/TekkadanPlays/nos2x-frog",
+  "manifest_version": 3,
+  "icons": {
+    "16": "assets/logo/16x16.png",
+    "32": "assets/logo/32x32.png",
+    "48": "assets/logo/48x48.png",
+    "96": "assets/logo/96x96.png",
+    "128": "assets/logo/128x128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Ribbit Signer",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "run_at": "document_end",
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"]
+    }
+  ],
+  "permissions": ["storage"],
+  "web_accessible_resources": [
+    {
+      "resources": ["nostr-provider.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
