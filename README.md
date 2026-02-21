@@ -70,6 +70,17 @@ When a client app requests signing a kind:22242 (relay auth) event, Ribbit Signe
 
 This replaces the old blanket "NIP-42 auto-sign" toggle with fine-grained, per-relay trust. You control exactly which relays receive your identity proof automatically.
 
+## Relay-Side Security (strfry)
+
+When paired with [TekkadanPlays/strfry](https://github.com/TekkadanPlays/strfry), the full authentication stack provides:
+
+- **Client-bound session tokens** — tokens are cryptographically bound to the extension's per-origin client ID, preventing cross-client theft
+- **Sensitive event filtering** — DMs, gift wraps, and other private kinds are only returned to the sender or recipient (configurable via `sensitiveKinds`)
+- **Authorization plugin** — relay operators can run a custom script to whitelist pubkeys or assign access tiers (full vs. partial/write-only)
+- **Anti-abuse tarpit** — repeated failed AUTH attempts trigger an escalating delay, blocking brute-force attacks
+
+See the [strfry README](https://github.com/TekkadanPlays/strfry#authentication-nip-42) for full relay configuration details.
+
 ## Install
 
 Build from source (see Develop below), then load as a temporary add-on in Firefox.
